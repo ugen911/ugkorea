@@ -142,7 +142,7 @@ def keep_latest_file_with_phrase(folder_path, phrase):
 folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
 
 # Список фраз для проверки в именах файлов
-phrases = ["FORUM_AUTO_PRICE_CENTER", "FORUM_AUTO_PRICE_NVS", "export_Ekaterinburg", "export_Podolsk", "FAVORIT", "Прайс", "berg"]
+phrases = ["FORUM_AUTO_PRICE_CENTER", "FORUM_AUTO_PRICE_NVS", "export_Ekaterinburg", "export_Podolsk", "FAVORIT", "Прайс", "BERG"]
 
 # Применяем функцию для каждой фразы
 for phrase in phrases:

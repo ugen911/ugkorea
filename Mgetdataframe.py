@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+from datetime import datetime
 import zipfile
 import tempfile
 import warnings
@@ -7,6 +8,14 @@ import warnings
 warnings.filterwarnings("ignore", message="Workbook contains no default style, apply openpyxl's default")
 
 folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
+
+def add_columns_to_df(df, name):
+    # Добавление колонки с текущей датой
+    df['дата'] = pd.to_datetime('today').strftime("%Y-%m-%d")
+    # Добавление колонки с именем датафрейма
+    df['поставщик'] = name
+    return df
+
 
 def find_headers(file_path):
     temp_df = pd.read_excel(file_path, nrows=5)
@@ -186,12 +195,17 @@ configs = {
     }
 }
 
-# Обработка датафреймов с использованием конфигурации
+# Создайте словарь для хранения датафреймов
+dataframes = {}
+
+# В цикле, где вы обрабатываете и добавляете колонки:
 for name, config in configs.items():
     if name in globals():
         df = globals()[name]
         processed_df = process_dataframe(df, config)
+        df_with_new_columns = add_columns_to_df(processed_df, name)
+        dataframes[name] = df_with_new_columns
         print(name)
-        print(processed_df.head())
+        print(df_with_new_columns.head())
     else:
         print(f"DataFrame '{name}' is not defined.")
