@@ -96,47 +96,31 @@ else:
 
 
 def keep_latest_file_with_phrase(folder_path, phrase):
-    """
-    Оставляет только последний файл в папке, содержащий указанную фразу в имени.
-    
-    :param folder_path: Путь к папке с файлами
-    :param phrase: Фраза, которая должна содержаться в имени файла
-    """
-    # Получаем список файлов в папке
     files = os.listdir(folder_path)
+    filtered_files = {}
 
-    # Создаем словарь для хранения последних изменений файлов с указанной фразой в имени
-    last_modified = {}
-
-    # Проходим по каждому файлу в папке
     for file_name in files:
-        # Проверяем, содержит ли имя файла указанную фразу (учитываем регистр)
+        # Пропускаем файлы, которые не содержат нужную фразу
         if phrase.lower() in file_name.lower():
-            file_path = os.path.join(folder_path, file_name)
-            # Получаем время последнего изменения файла
-            modification_time = os.path.getmtime(file_path)
-            # Извлекаем дату и время из имени файла
-            datetime_str = file_name.split("_", 1)[0]
-            # Преобразуем дату и время в число для сравнения
-            modification_time = float(modification_time)
-            # Обновляем время последнего изменения файла в словаре
-            last_modified[file_name] = (modification_time, datetime_str)
+            try:
+                # Парсим дату и время из имени файла
+                datetime_str = '_'.join(file_name.split('_')[:2])  # Получаем 'ГГГГ-ММ-ДД_чч-мм-сс'
+                datetime_obj = datetime.datetime.strptime(datetime_str, '%Y-%m-%d_%H-%M-%S')
+                filtered_files[file_name] = datetime_obj
+            except ValueError as e:
+                print(f"Ошибка в имени файла {file_name}: {e}")
 
-    # Находим последний измененный файл
-    latest_file = max(last_modified, key=lambda k: last_modified[k][0])
+    if filtered_files:
+        # Находим файл с самой поздней датой
+        latest_file = max(filtered_files, key=filtered_files.get)
+        latest_datetime = filtered_files[latest_file]
 
-    # Получаем дату и время последнего файла
-    latest_datetime = last_modified[latest_file][1]
-
-    # Удаляем из папки все файлы, кроме последнего
-    for file in files:
-        # Проверяем, содержит ли имя файла указанную фразу и не является ли он последним
-        if phrase.lower() in file.lower() and last_modified[file][1] != latest_datetime:
-            # Получаем путь к файлу
-            file_path = os.path.join(folder_path, file)
-            # Удаляем файл
-            os.remove(file_path)
-            print(f"Файл '{file}' удален")
+        for file_name, datetime_obj in filtered_files.items():
+            if datetime_obj != latest_datetime:
+                # Если файл не последний, удаляем его
+                file_path = os.path.join(folder_path, file_name)
+                os.remove(file_path)
+                print(f"Deleted '{file_name}'")
 
 # Пути к папке с файлами
 folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
@@ -146,5 +130,5 @@ phrases = ["FORUM_AUTO_PRICE_CENTER", "FORUM_AUTO_PRICE_NVS", "export_Ekaterinbu
 
 # Применяем функцию для каждой фразы
 for phrase in phrases:
-    print(f"Проверка для фразы '{phrase}':")
+    print(f"Processing for phrase '{phrase}':")
     keep_latest_file_with_phrase(folder_path, phrase)

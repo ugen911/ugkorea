@@ -104,6 +104,16 @@ for df_name in all_created_dataframes:
     print(df_name)
 
 
+def collect_dataframes(configs):
+    dataframes = {}
+    for name in configs.keys():
+        dataframe = globals().get(name)
+        if dataframe is not None:
+            dataframes[name] = dataframe
+        else:
+            print(f"DataFrame '{name}' is not defined.")
+    return dataframes
+
 # Определение функции обработки
 def process_dataframe(df, config):
     df.rename(columns=config['rename_columns'], inplace=True)
@@ -209,3 +219,6 @@ for name, config in configs.items():
         print(df_with_new_columns.head())
     else:
         print(f"DataFrame '{name}' is not defined.")
+
+
+dataframes_dict = dataframes

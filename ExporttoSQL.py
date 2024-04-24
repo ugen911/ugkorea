@@ -60,3 +60,4 @@ with engine.connect() as connection:
                 print(f"Данные из датафрейма {table_name} добавлены в таблицу {table_name}.")
             except Exception as e:
                 print(f"Ошибка при добавлении данных в таблицу {table_name}: {e}")
+
