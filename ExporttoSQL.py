@@ -2,25 +2,23 @@ import pandas as pd
 from sqlalchemy import create_engine
 import sys
 import subprocess
+import os
 
-# Параметры подключения к базе данных
-db_user = 'postgres'
-db_password = '89232808797'  # Замените на реальный пароль
-db_host = 'localhost'
-db_port = '5432'
-db_name = 'ugkorea'
+# Извлечение параметров подключения из переменных окружения
+db_user = os.getenv('DB_USER', 'postgres')
+db_password = os.getenv('DB_PASSWORD', 'default_password')
+db_host = os.getenv('DB_HOST', 'localhost')
+db_port = os.getenv('DB_PORT', '5432')
+db_name = os.getenv('DB_NAME', 'ugkorea')
 db_url = f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
 
 engine = create_engine(db_url)
 
-# Проверка подключения
 try:
-    connection = engine.connect()
-    print("Подключение к PostgreSQL успешно установлено.")
-    connection.close()
+    with engine.connect() as connection:
+        print("Подключение к PostgreSQL успешно установлено.")
 except Exception as e:
     print(f"Не удалось подключиться к PostgreSQL: {e}")
-
 # Выполнение внешнего скрипта
 file_path = r"C:\Users\evgen\repo\ugkorea\Mimportprice.py"
 try:
