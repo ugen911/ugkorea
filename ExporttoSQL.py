@@ -36,28 +36,28 @@ from Mgetdataframe import dataframes_dict
 
 # Подключаемся снова к БД для добавления данных
 with engine.connect() as connection:
-    for table_name, df in dataframes_dict.items():
-        # Выводим названия колонок датафрейма перед выполнением каких-либо операций
-        print(f"Колонки в датафрейме для таблицы {table_name}: {df.columns.tolist()}")
-    
-    for table_name, df in dataframes_dict.items():
-        # Проверяем названия колонок, если названия другие, то нужно будет их заменить в коде ниже
-        if 'дата' not in df.columns:
-            print(f"В датафрейме для таблицы {table_name} отсутствует колонка 'дата'.")
-            continue
+    connection.begin()  # Начало транзакции
+    try:
+        for table_name, df in dataframes_dict.items():
+            if 'дата' not in df.columns:
+                print(f"В датафрейме для таблицы {table_name} отсутствует колонка 'дата'.")
+                continue
 
-        # Получаем список дат в таблице
-        existing_dates = pd.read_sql(f"SELECT DISTINCT дата FROM {table_name}", connection)['дата']
-        
-        # Фильтруем датафреймы, исключая даты, которые уже есть в таблице
-        df_filtered = df[~df['дата'].isin(existing_dates)]
+            existing_dates = pd.read_sql(f"SELECT DISTINCT дата FROM {table_name}", connection)['дата']
+            df_filtered = df[~df['дата'].isin(existing_dates)]
 
-        if df_filtered.empty:
-            print(f"Нет новых данных для добавления в таблицу {table_name}.")
-        else:
-            try:
+            if df_filtered.empty:
+                print(f"Нет новых данных для добавления в таблицу {table_name}.")
+            else:
                 df_filtered.to_sql(table_name, connection, if_exists='append', index=False)
                 print(f"Данные из датафрейма {table_name} добавлены в таблицу {table_name}.")
-            except Exception as e:
-                print(f"Ошибка при добавлении данных в таблицу {table_name}: {e}")
+                num_rows_added = df_filtered.shape[0]
+                print(f"В таблицу {table_name} добавлено {num_rows_added} строк.")
+                print("Первые 5 строк добавленных данных:")
+                print(df_filtered.head())
+        connection.commit()  # Подтверждение транзакции
+    except Exception as e:
+        print(f"Ошибка при работе с базой данных: {e}")
+        connection.rollback()  # Откат изменений в случае ошибки
+
 
