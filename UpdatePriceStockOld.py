@@ -1,21 +1,9 @@
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
+from database import get_db_engine
 
-db_user = 'postgres'
-db_password = '89232808797'  # Замените на реальный пароль
-db_host = 'localhost'
-db_port = '5432'
-db_name = 'ugkorea'
-db_url = f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
-
-try:
-    engine = create_engine(db_url)
-    connection = engine.connect()
-    print("Подключение к базе данных успешно.")
-except OperationalError as e:
-    print(f"Ошибка при подключении к базе данных: {e}")
-
+engine = get_db_engine()
 
 # Открываем файл и читаем данные
 try:
@@ -53,19 +41,28 @@ price = data[['код', 'ценазакуп', 'ценарозн']]
 
 # Экспорт данных в базу данных и вывод сообщений
 try:
-    nomenklatura.to_sql('nomenklatura', engine, index=False, if_exists='replace')
+    # Установка колонки "код" в качестве индекса (primary key)
+    nomenklatura.set_index('код', inplace=True)
+    # Экспорт DataFrame в таблицу SQL
+    nomenklatura.to_sql('nomenklatura', engine, index=True, if_exists='replace')
     print("Таблица 'nomenklatura' успешно создана и данные успешно экспортированы.")
 except OperationalError as e:
     print(f"Ошибка при экспорте данных в таблицу 'nomenklatura': {e}")
 
 try:
-    stock.to_sql('stock', engine, index=False, if_exists='replace')
+    # Установка колонки "код" в качестве индекса (primary key)
+    stock.set_index('код', inplace=True)
+    # Экспорт DataFrame в таблицу SQL
+    stock.to_sql('stock', engine, index=True, if_exists='replace')
     print("Таблица 'stock' успешно создана и данные успешно экспортированы.")
 except OperationalError as e:
     print(f"Ошибка при экспорте данных в таблицу 'stock': {e}")
 
 try:
-    price.to_sql('price', engine, index=False, if_exists='replace')
+    # Установка колонки "код" в качестве индекса (primary key)
+    price.set_index('код', inplace=True)
+    # Экспорт DataFrame в таблицу SQL
+    price.to_sql('price', engine, index=True, if_exists='replace')
     print("Таблица 'price' успешно создана и данные успешно экспортированы.")
 except OperationalError as e:
     print(f"Ошибка при экспорте данных в таблицу 'price': {e}")
