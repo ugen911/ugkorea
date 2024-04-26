@@ -2,17 +2,14 @@
 import pandas as pd
 import sys
 import subprocess
-from outlook_utils import outlook_utile
-from Mgetdataframe import get_df_main
+from .outlook_utils import outlook_utile
+from .main_get_dataframe import get_df_main
 import os
 
-# Добавляем путь к директории, где находится database.py
-project_directory = os.path.abspath('C:\\Users\\evgen\\repo\\ugkorea')
+
 
 from db.database import get_db_engine
 
-# Выводим текущий список путей поиска модулей для диагностики
-print("Список путей поиска модулей:", sys.path)
 
 folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
 
