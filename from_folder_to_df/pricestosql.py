@@ -9,7 +9,7 @@ import os
 # Добавляем путь к директории, где находится database.py
 project_directory = os.path.abspath('C:\\Users\\evgen\\repo\\ugkorea')
 
-from database import get_db_engine
+from db.database import get_db_engine
 
 # Выводим текущий список путей поиска модулей для диагностики
 print("Список путей поиска модулей:", sys.path)

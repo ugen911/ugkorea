@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
-from database import get_db_engine
+from db.database import get_db_engine
 
 engine = get_db_engine()
 

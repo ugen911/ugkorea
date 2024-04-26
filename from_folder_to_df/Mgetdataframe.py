@@ -243,5 +243,5 @@ def get_df_main(folder_path=folder_path):
 
    
    
-   
-get_df_main()
+if __name__ == "__main__":
+    get_df_main()    
