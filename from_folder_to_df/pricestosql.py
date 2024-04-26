@@ -1,11 +1,21 @@
-# Файл main.py
+
 import pandas as pd
 import sys
 import subprocess
-from database import get_db_engine
-from outlook_utils import main
+from outlook_utils import outlook_utile
+from Mgetdataframe import get_df_main
+import os
 
-main()
+# Добавляем путь к директории, где находится database.py
+project_directory = os.path.abspath('C:\\Users\\evgen\\repo\\ugkorea')
+
+from database import get_db_engine
+
+# Выводим текущий список путей поиска модулей для диагностики
+print("Список путей поиска модулей:", sys.path)
+
+folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
+
 # Выполнение внешнего скрипта
 def run_external_script(file_path):
     try:
@@ -19,7 +29,7 @@ def run_external_script(file_path):
 # Импорт и добавление данных в базу
 def import_and_load_data():
     sys.path.append(r"C:\Users\evgen\repo\ugkorea")
-    from Mgetdataframe import dataframes_dict
+    dataframes_dict = get_df_main(folder_path)
     engine = get_db_engine()
 
     with engine.connect() as connection:
@@ -49,8 +59,8 @@ def import_and_load_data():
             connection.rollback()  # Откат изменений в случае ошибки
 
 def main():
-    file_path = r"C:\Users\evgen\repo\ugkorea\Mimportprice.py"
-    run_external_script(file_path)
+    get_db_engine()
+    outlook_utile()
     import_and_load_data()
 
 if __name__ == "__main__":

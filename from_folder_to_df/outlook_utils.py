@@ -75,7 +75,7 @@ def keep_only_latest_files(attachments_saved):
                         print(f"Удалён старый файл: {file}")
 
 
-def main():
+def outlook_utile():
     senders = ["prices_export@shate-m.com", "post@mx.forum-auto.ru", "prices@favorit-parts.ru", "krsk_price@mail2.tpm.ru", "noreply@berg.ru"]
     save_folder = r"C:\Users\evgen\repo\ugkorea\Output"
     clean_output_folder(save_folder)
@@ -84,4 +84,4 @@ def main():
     save_attachments_from_messages(filtered_messages, save_folder)
 
 if __name__ == "__main__":
-    main()
+    outlook_utile()

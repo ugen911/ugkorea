@@ -205,20 +205,43 @@ configs = {
     }
 }
 
-# Создайте словарь для хранения датафреймов
-dataframes = {}
+#Создайте словарь для хранения датафреймов
+#dataframes = {}
 
 # В цикле, где вы обрабатываете и добавляете колонки:
-for name, config in configs.items():
-    if name in globals():
-        df = globals()[name]
-        processed_df = process_dataframe(df, config)
-        df_with_new_columns = add_columns_to_df(processed_df, name)
-        dataframes[name] = df_with_new_columns
-        print(name)
-        print(df_with_new_columns.head())
-    else:
-        print(f"DataFrame '{name}' is not defined.")
+# for name, config in configs.items():
+#     if name in globals():
+#         df = globals()[name]
+#         processed_df = process_dataframe(df, config)
+#         df_with_new_columns = add_columns_to_df(processed_df, name)
+#         dataframes[name] = df_with_new_columns
+#         print(name)
+#         print(df_with_new_columns.head())
+#     else:
+#         print(f"DataFrame '{name}' is not defined.")
 
 
-dataframes_dict = dataframes
+# dataframes_dict = dataframes
+
+def get_df_main(folder_path=folder_path):
+    # Создаем словарь для хранения датафреймов
+    dataframes= {}
+    
+    # Цикл, где мы обрабатываем и добавляем колонки:
+    for name, config in configs.items():
+        df = globals().get(name)
+        if df is not None:
+            processed_df = process_dataframe(df, config)
+            df_with_new_columns = add_columns_to_df(processed_df, name)
+            dataframes[name] = df_with_new_columns
+            print(name)
+            print(df_with_new_columns.head())
+        else:
+            print(f"DataFrame '{name}' is not defined.")
+    
+    return dataframes
+
+   
+   
+   
+get_df_main()
