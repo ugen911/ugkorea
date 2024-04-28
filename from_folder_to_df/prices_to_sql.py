@@ -57,7 +57,7 @@ def import_and_load_data():
 
 def main():
     get_db_engine()
-    outlook_utile()
+    #outlook_utile() #Убрано из-за того что сначала выполнялся import_and_load_data в bat, вероятно связано с многопоточностью win32.client
     import_and_load_data()
 
 if __name__ == "__main__":
