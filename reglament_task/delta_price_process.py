@@ -1,9 +1,37 @@
+###Удаляет прайсы кроме двух последних дат в базе данных, переносит дельту в analitics и считает подорожание никуда не выгружая
+
+
+
 from db.database import get_db_engine
 from sqlalchemy import text, inspect
 import pandas as pd
 
 engine = get_db_engine()
 inspector = inspect(engine)
+
+#Список всех таблиц в схеме "prices"
+tables_query = text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'prices'")
+with engine.connect() as conn:
+    tables = [row[0] for row in conn.execute(tables_query)]
+
+with engine.connect() as conn:
+    for table in tables:
+        # Получаем две последние даты
+        date_query = f"""
+            SELECT DISTINCT дата FROM prices.{table}
+            ORDER BY дата DESC LIMIT 2
+        """
+        recent_dates = [row[0] for row in conn.execute(text(date_query))]
+
+        if len(recent_dates) == 2:
+            # Удаляем все записи старше этих дат
+            delete_query = f"""
+                DELETE FROM prices.{table}
+                WHERE дата < :cutoff_date
+            """
+            conn.execute(text(delete_query), {'cutoff_date': min(recent_dates)})
+        # Коммитим транзакцию
+        conn.commit()
 
 with engine.connect() as conn:
     query = text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'prices'")
@@ -35,10 +63,6 @@ for name, df in date_dfs.items():
     print(df.head())
     print("\n")  # Добавляем пустую строку между датафреймами для лучшей читаемости
 
-
-import pandas as pd
-
-# Предположим, что date_dfs уже заполнен и содержит нужные датафреймы
 
 # Группируем датафреймы по колонке 'поставщик'
 suppliers_frames = {}
@@ -110,7 +134,7 @@ for supplier, df in merged_dataframes.items():
     
     table_name = f"{supplier}"
     
-    # Выгрузка в базу данных
+    #Выгрузка в базу данных
     with engine.connect() as conn:
         if not inspector.has_table(table_name, schema='analitic'):
             # Если таблицы нет, создаем и загружаем данные
@@ -128,3 +152,38 @@ for supplier, df in merged_dataframes.items():
             combined_df.drop(columns=['поставка_new', 'расход_new'], inplace=True)
             # Замена старых данных в таблице
             combined_df.to_sql(name=table_name, con=conn, schema='analitic', if_exists='replace', index=False)
+
+
+
+for df in date_dfs.values():
+    if 'дата' in df.columns:
+        df['дата'] = pd.to_datetime(df['дата'])
+
+# Собираем все данные в один датафрейм
+full_df = pd.concat(date_dfs.values())
+
+# Сортировка по поставщику, производителю и дате
+full_df = full_df.sort_values(by=['поставщик', 'производитель', 'дата'])
+
+# Группировка по поставщику и производителю
+price_changes = []
+
+for (supplier, brand), group in full_df.groupby(['поставщик', 'производитель']):
+    group = group.sort_values(by='дата')
+    
+    # Расчет среднего подорожания между всеми ценами в группе
+    initial_price = group.iloc[0]['цена']
+    price_changes_for_group = ((group['цена'] - initial_price) / initial_price) * 100
+    average_increase = price_changes_for_group.mean()
+
+    price_changes.append({
+        'поставщик': supplier,
+        'производитель': brand,
+        'среднее_подорожание': average_increase
+    })
+
+# Создаем датафрейм с результатами
+price_change_df = pd.DataFrame(price_changes)
+
+# Выводим результаты
+print(price_change_df)
