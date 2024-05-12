@@ -7,4 +7,6 @@ python -m from_folder_to_df.prices_to_sql
 echo Prices downloaded to psql.
 python -m reglament_task.create_files_to_access
 echo files for access is ready.
+python -m reglament_task.delta_price_process
+echo delta + in database
 pause
