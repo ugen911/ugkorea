@@ -4,38 +4,49 @@ from sqlalchemy.exc import OperationalError
 from db.database import get_db_engine
 import random
 import string
+import re
+import transliterate
 
 def load_data(file_path):
     try:
         data = pd.read_excel(file_path)
-        print(f"Данные из файла '{file_path}' успешно загружены.")
         return data
     except FileNotFoundError:
         print(f"Файл '{file_path}' не найден.")
         exit()
 
+def snake_case(column_name):
+    column_name = column_name.lower()
+    column_name = transliterate.translit(column_name, 'ru', reversed=True)
+    column_name = re.sub(r'\s+', '_', column_name)
+    column_name = re.sub(r'[^a-z0-9_]', '', column_name)
+    return column_name
+
 def prepare_data(data):
-    data.columns = map(str.lower, data.columns)
-    data.rename(columns={'полноенаименование': 'наименование'}, inplace=True)
-    nomenklatura = data[['код', 'наименование', 'артикул', 'производитель', 'едизм', 'пометкаудаления']]
-    nomenklatura = nomenklatura[['код', 'артикул', 'производитель', 'наименование', 'едизм', 'пометкаудаления']]
-    stock = data[['код', 'коност']].copy()
-    stock['оснсклад'] = stock['коност'].fillna(0).astype(int)
-    stock.drop(columns=['коност'], inplace=True)
-    stock['заказысклад'] = data['остатокзаказы'].fillna(0).astype(int)
-    price = data[['код', 'ценазакуп', 'ценарозн']]
+    data.columns = [snake_case(col) for col in data.columns]
+    data.rename(columns={'polnoenaimenovanie': 'naimenovanie'}, inplace=True)
+    
+    nomenklatura = data[['kod', 'naimenovanie', 'artikul', 'proizvoditel', 'edizm', 'pometkaudalenija']]
+    nomenklatura = nomenklatura[['kod', 'artikul', 'proizvoditel', 'naimenovanie', 'edizm', 'pometkaudalenija']]
+    
+    stock = data[['kod', 'konost']].copy()
+    stock['osnsklad'] = stock['konost'].fillna(0).astype(int)
+    stock.drop(columns=['konost'], inplace=True)
+    stock['zakazy_sklad'] = data['ostatokzakazy'].fillna(0).astype(int)
+    
+    price = data[['kod', 'tsenazakup', 'tsenarozn']]
+    
     return nomenklatura, stock, price
 
 def generate_analog_groups(data):
-    data.columns = map(str.lower, data.columns)
-    data.rename(columns={'код 1с': 'код', 'код аналога': 'аналог'}, inplace=True)
+    data.columns = [snake_case(col) for col in data.columns]
+    data.rename(columns={'kod_1s': 'kod', 'kod_analoga': 'analog'}, inplace=True)
     
-    # Создаем словарь для хранения кодов и их групп аналогов
     analog_dict = {}
     
     for index, row in data.iterrows():
-        code = row['код']
-        analog = row['аналог']
+        code = row['kod']
+        analog = row['analog']
         
         if code not in analog_dict:
             analog_dict[code] = set()
@@ -45,7 +56,6 @@ def generate_analog_groups(data):
         analog_dict[code].add(analog)
         analog_dict[analog].add(code)
     
-    # Определяем группы аналогов
     def find_group(code, visited, group):
         if code not in visited:
             visited.add(code)
@@ -62,7 +72,6 @@ def generate_analog_groups(data):
             find_group(code, visited, group)
             groups.append(group)
     
-    # Генерируем уникальные идентификаторы для групп
     group_ids = {}
     for group in groups:
         group_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
@@ -75,16 +84,16 @@ def prepare_analog_data(file_path):
     data = load_data(file_path)
     if data is not None:
         group_ids = generate_analog_groups(data)
-        analog_df = pd.DataFrame(list(group_ids.items()), columns=['Код 1С', 'Группа аналогов'])
-        analog_df.drop_duplicates(subset=['Код 1С'], inplace=True)
+        analog_df = pd.DataFrame(list(group_ids.items()), columns=['kod_1s', 'gruppa_analogov'])
+        analog_df.drop_duplicates(subset=['kod_1s'], inplace=True)
         return analog_df
     return None
 
-def export_to_db(engine, df, table_name, index_col='код'):
+def export_to_db(engine, df, table_name, index_col='kod'):
     try:
+        df.columns = [snake_case(col) for col in df.columns]
         df.set_index(index_col, inplace=True)
         df.to_sql(table_name, engine, index=True, if_exists='replace')
-        print(f"Таблица '{table_name}' успешно создана и данные успешно экспортированы.")
     except OperationalError as e:
         print(f"Ошибка при экспорте данных в таблицу '{table_name}': {e}")
 
@@ -106,7 +115,9 @@ def main():
 
     analog_data = prepare_analog_data(analog_file_path)
     if analog_data is not None:
-        export_to_db(engine, analog_data, 'groupanalogiold', index_col='Код 1С')
+        export_to_db(engine, analog_data, 'groupanalogiold', index_col='kod_1s')
+
+    print("Все операции выполнены успешно.")
 
 if __name__ == "__main__":
     main()
