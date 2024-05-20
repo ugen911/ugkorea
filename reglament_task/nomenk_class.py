@@ -125,6 +125,15 @@ def update_filter_type(type_detail):
         return 'фильтр воздушный салонный'
     return type_detail
 
+# Функция для приведения типов деталей товаров с одинаковым gruppa_analogov к одному значению
+def unify_types_with_analog_groups(df):
+    grouped = df.groupby('gruppa_analogov')
+    for name, group in grouped:
+        if len(group['type_detail'].unique()) > 1:
+            longest_type = max(group['type_detail'], key=len)
+            df.loc[df['gruppa_analogov'] == name, 'type_detail'] = longest_type
+    return df
+
 if __name__ == "__main__":
     # Получение двигателя БД
     engine = get_db_engine()
@@ -132,6 +141,14 @@ if __name__ == "__main__":
     # Загрузка таблиц из базы данных в DataFrame
     groupanalogiold_df = pd.read_sql_table('groupanalogiold', engine, schema='public')
     nomenklaturaold_df = pd.read_sql_table('nomenklaturaold', engine, schema='public')
+
+    # Проверка, что таблица groupanalogiold не пустая
+    if groupanalogiold_df.empty:
+        raise ValueError("Таблица 'groupanalogiold' пустая.")
+
+    # Приведение типов данных к строковому типу для объединения и очистка пробелов
+    nomenklaturaold_df['kod'] = nomenklaturaold_df['kod'].astype(str).str.strip()
+    groupanalogiold_df['kod_1s'] = groupanalogiold_df['kod_1s'].astype(str).str.strip()
 
     # Объединение DataFrame с использованием левого соединения
     merged_df = pd.merge(nomenklaturaold_df, groupanalogiold_df, how='left', left_on='kod', right_on='kod_1s')
@@ -177,6 +194,9 @@ if __name__ == "__main__":
     merged_df['type_detail'] = merged_df.apply(
         lambda row: refine_unique_types(row, type_counts), axis=1)
 
+    # Приведение типов деталей товаров с одинаковыми gruppa_analogov к одному значению
+    merged_df = unify_types_with_analog_groups(merged_df)
+
     # Подготовка DataFrame для выгрузки
     upload_df = merged_df[['kod', 'type_detail']]
 
@@ -187,16 +207,16 @@ if __name__ == "__main__":
     # Выгрузка DataFrame в базу данных
     upload_df.to_sql('typedetailgen', engine, schema='public', if_exists='replace', index=False)
 
-    # # Вывод первых нескольких строк обновленного DataFrame для проверки
-    # print(merged_df.head(20))
+    # Вывод первых нескольких строк обновленного DataFrame для проверки
+    print(merged_df.head(20))
 
-    # # Проверка строк, где type_detail равно None
-    # missing_types = merged_df[merged_df['type_detail'].isnull()]
-    # print("Строки без типа детали:")
-    # print(missing_types[['naimenovanie']])
+    # Проверка строк, где type_detail равно None
+    missing_types = merged_df[merged_df['type_detail'].isnull()]
+    print("Строки без типа детали:")
+    print(missing_types[['naimenovanie']])
 
-    # # Выгрузка DataFrame в CSV файл
-    # output_path = r'C:\Users\evgen\repo\merged_data.csv'
-    # merged_df.to_csv(output_path, sep=';', index=False, encoding='windows-1251')
+    # Выгрузка DataFrame в CSV файл
+    output_path = r'C:\Users\evgen\repo\merged_data.csv'
+    merged_df.to_csv(output_path, sep=';', index=False, encoding='windows-1251')
 
-    # print(f'DataFrame успешно выгружен в {output_path}')
+    print(f'DataFrame успешно выгружен в {output_path}')
