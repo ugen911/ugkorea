@@ -1,3 +1,5 @@
 ugkorea/
 venv/
 Output/
+errors.txt
+db/config.ini

@@ -1,3 +1,6 @@
+###Парсер avtomoe
+
+
 import logging
 import time
 import random
@@ -9,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException, TimeoutException
 from bs4 import BeautifulSoup
 import psutil
 
@@ -62,7 +66,7 @@ def get_categories(driver):
 def get_product_links_from_page(driver):
     product_links = []
     try:
-        WebDriverWait(driver, 10).until(
+        WebDriverWait(driver, 20).until(
             EC.presence_of_all_elements_located((By.CSS_SELECTOR, "article.product-teaser"))
         )
         products = driver.find_elements(By.CSS_SELECTOR, "article.product-teaser")
@@ -81,7 +85,7 @@ def get_product_links_from_page(driver):
                 for product in products:
                     if "В наличии" in product.text:
                         product_links.append(product.find_element(By.CSS_SELECTOR, "a").get_attribute("href"))
-    except Exception as e:
+    except TimeoutException as e:
         logging.error(f'Ошибка ожидания продуктов: {e}')
     logging.info(f'Найдено {len(product_links)} товаров на странице.')
     return product_links
@@ -108,22 +112,25 @@ def go_to_next_page(driver):
         logging.error('StaleElementReferenceException поймано в go_to_next_page. Повторная попытка...')
         # Повторная попытка нахождения кнопки "Следующие"
         return go_to_next_page(driver)
+    except NoSuchElementException:
+        logging.info('Кнопка "Следующие" не найдена, возможно это последняя страница.')
     except Exception as e:
         logging.error(f'Ошибка перехода на следующую страницу: {e}')
     return False
 
 def get_all_product_links(driver, category_link, debug_mode=False):
     driver.get(category_link)
-    time.sleep(3)  # Добавлена задержка для загрузки страницы
-    product_links = []
+    time.sleep(5)  # Добавлена задержка для загрузки страницы
+    product_links = set()  # Используем множество для хранения уникальных ссылок
     page_count = 0  # Переменная для подсчета количества страниц
 
     while True:
         new_product_links = get_product_links_from_page(driver)
-        if not new_product_links:
+        if not new_product_links and page_count == 0:
+            logging.info(f'На первой странице категории {category_link} не найдено товаров.')
             break
 
-        product_links.extend(new_product_links)
+        product_links.update(new_product_links)  # Добавляем ссылки во множество
         page_count += 1
 
         if debug_mode and page_count >= 10:
@@ -134,7 +141,7 @@ def get_all_product_links(driver, category_link, debug_mode=False):
 
     logging.info(f'Категория: {category_link} - Всего страниц: {page_count}, Всего товаров: {len(product_links)}')
     print(f'Категория: {category_link} - Всего страниц: {page_count}, Всего товаров: {len(product_links)}')
-    return product_links
+    return list(product_links)  # Преобразуем множество обратно в список
 
 def get_product_details(driver, product_link):
     driver.get(product_link)
@@ -186,7 +193,7 @@ def process_category(category_link, driver, debug_mode=False):
     except Exception as e:
         logging.error(f'Ошибка обработки категории {category_link}: {e}')
         return []
-    
+
 def kill_chrome_processes():
     for process in psutil.process_iter():
         try:
@@ -213,7 +220,7 @@ def main(debug_mode=False):
             print(f'Режим отладки: выбрано 3 случайные категории.')
 
         all_product_details = []
-        all_product_links = []
+        all_product_links = set()  # Используем множество для хранения уникальных ссылок
 
         print('Начинаем обработку категорий...')
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -224,7 +231,7 @@ def main(debug_mode=False):
                     product_links = future.result()
                     if debug_mode:
                         product_links = random.sample(product_links, min(10, len(product_links)))
-                    all_product_links.extend(product_links)
+                    all_product_links.update(product_links)  # Добавляем ссылки во множество
                 except Exception as e:
                     logging.error(f'Ошибка обработки категории {category_link}: {e}')
         print('Обработка категорий завершена.')
@@ -236,19 +243,14 @@ def main(debug_mode=False):
         total_products = len(all_product_links)
         processed_products = 0
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(get_product_details, drivers[i % len(drivers)], product_link): product_link for i, product_link in enumerate(all_product_links)}
-            for future in as_completed(futures):
-                product_link = futures[future]
-                try:
-                    product_details = future.result()
-                    if not all(value == 'N/A' for key, value in product_details.items() if key != 'link'):
-                        all_product_details.append(product_details)
-                    processed_products += 1
-                    print(f'Обработан продукт {processed_products} из {total_products}: {product_details}')
-                    logging.info(f'Скрапирован продукт: {product_details}')
-                except Exception as e:
-                    logging.error(f'Ошибка обработки продукта {product_link}: {e}')
+        for product_link in all_product_links:
+            product_details = get_product_details(driver, product_link)
+            if not all(value == 'N/A' for key, value in product_details.items() if key != 'link'):
+                all_product_details.append(product_details)
+            processed_products += 1
+            print(f'Обработан продукт {processed_products} из {total_products}: {product_details}')
+            logging.info(f'Скрапирован продукт: {product_details}')
+            
         if all_product_details:
             df = pd.DataFrame(all_product_details)
             df = df[['link', 'name', 'catalog_number', 'manufacturer', 'availability', 'stock', 'price']]
@@ -260,6 +262,8 @@ def main(debug_mode=False):
             logging.info('Детали продуктов не были скрапированы.')
             print('Детали продуктов не были скрапированы.')
 
+    except Exception as e:
+        logging.error(f'Ошибка во время выполнения скрипта: {e}')
     finally:
         for driver in drivers:
             driver.quit()
