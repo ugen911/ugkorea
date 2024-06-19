@@ -4,3 +4,5 @@ Output/
 errors.txt
 db/config.ini
 db/config.py
+extensions.txt
+data_upload_errors.log
