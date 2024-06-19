@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 from sqlalchemy import text
-from db.database import get_db_engine
+from ugkorea.db.database import get_db_engine
 
 # Функция для замены служебных положений на русский язык
 def replace_positions_updated(text_value):

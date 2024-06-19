@@ -1,4 +1,4 @@
-from db.database import get_db_engine
+from ugkorea.db.database import get_db_engine
 import pandas as pd
 from sqlalchemy import text
 import os

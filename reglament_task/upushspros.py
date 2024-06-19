@@ -8,7 +8,7 @@ from transliterate import translit
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 from inputimeout import inputimeout, TimeoutOccurred
-from db.database import get_db_engine
+from ugkorea.db.database import get_db_engine
 
 
 

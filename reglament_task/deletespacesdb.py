@@ -1,4 +1,4 @@
-from db.database import get_db_engine
+from ugkorea.db.database import get_db_engine
 from sqlalchemy import create_engine, inspect, text
 import inflection
 

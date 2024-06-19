@@ -2,7 +2,7 @@
 
 
 
-from db.database import get_db_engine
+from ugkorea.db.database import get_db_engine
 from sqlalchemy import text, inspect
 import pandas as pd
 

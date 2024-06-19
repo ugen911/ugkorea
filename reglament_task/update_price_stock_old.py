@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
-from db.database import get_db_engine
+from ugkorea.db.database import get_db_engine
 import random
 import string
 import re

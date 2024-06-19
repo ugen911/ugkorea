@@ -1,4 +1,4 @@
-from db.database import get_db_engine
+from ugkorea.db.database import get_db_engine
 import os
 import pandas as pd
 from transliterate import translit, get_available_language_codes
