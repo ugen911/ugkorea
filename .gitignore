@@ -3,3 +3,4 @@ venv/
 Output/
 errors.txt
 db/config.ini
+db/config.py
