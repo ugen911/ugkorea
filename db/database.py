@@ -1,7 +1,7 @@
 # Файл database.py
 import os
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import create_engine
+
 
 def get_db_engine():
     db_user = os.getenv('DB_USER', 'postgres')

@@ -1,11 +1,15 @@
 import pandas as pd
-from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
-from ugkorea.db.database import get_db_engine
+from sqlalchemy import create_engine
 import random
 import string
 import re
 import transliterate
+from ugkorea.db.config import local_db_config
+
+def get_db_engine():
+    connection_string = f"postgresql+psycopg2://{local_db_config['user']}:{local_db_config['password']}@{local_db_config['host']}:{local_db_config['port']}/{local_db_config['database']}"
+    return create_engine(connection_string)
 
 def load_data(file_path):
     try:
@@ -94,8 +98,16 @@ def export_to_db(engine, df, table_name, index_col='kod'):
         df.columns = [snake_case(col) for col in df.columns]
         df.set_index(index_col, inplace=True)
         df.to_sql(table_name, engine, index=True, if_exists='replace')
+        print(f"Таблица '{table_name}' была успешно создана или заменена.")
     except OperationalError as e:
         print(f"Ошибка при экспорте данных в таблицу '{table_name}': {e}")
+
+def print_first_five_rows(engine, table_name):
+    query = f"SELECT * FROM {table_name} LIMIT 5"
+    with engine.connect() as connection:
+        result = pd.read_sql(query, connection)
+        print(f"Первые 5 строк из таблицы '{table_name}':")
+        print(result)
 
 def main():
     engine = get_db_engine()
@@ -108,6 +120,9 @@ def main():
 
     data = load_data(data_file_path)
     if data is not None:
+        # Преобразуем данные в кодировку UTF-8
+        data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8') if isinstance(x, str) else x))
+        
         nomenklatura, stock, price = prepare_data(data)
         export_to_db(engine, nomenklatura, 'nomenklaturaold')
         export_to_db(engine, stock, 'stockold')
@@ -115,7 +130,16 @@ def main():
 
     analog_data = prepare_analog_data(analog_file_path)
     if analog_data is not None:
+        # Преобразуем данные в кодировку UTF-8
+        analog_data = analog_data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8') if isinstance(x, str) else x))
+        
         export_to_db(engine, analog_data, 'groupanalogiold', index_col='kod_1s')
+
+    # Вывод первых 5 строк из каждой созданной таблицы
+    print_first_five_rows(engine, 'nomenklaturaold')
+    print_first_five_rows(engine, 'stockold')
+    print_first_five_rows(engine, 'priceold')
+    print_first_five_rows(engine, 'groupanalogiold')
 
     print("Все операции выполнены успешно.")
 
