@@ -2,13 +2,8 @@
 import pandas as pd
 import sys
 import subprocess
-from .outlook_utils import outlook_utile
-from .main_get_dataframe import get_df_main
-import os
-
-
-
-from db.database import get_db_engine
+from ugkorea.from_folder_to_df.main_get_dataframe import get_df_main
+from ugkorea.db.database import get_db_engine
 
 
 folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
