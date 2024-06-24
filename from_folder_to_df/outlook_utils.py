@@ -3,7 +3,6 @@ import datetime
 import win32com.client
 import pytz
 
-
 def clean_output_folder(folder_path):
     """Очистка папки от файлов."""
     for file in os.listdir(folder_path):
@@ -15,18 +14,27 @@ def clean_output_folder(folder_path):
             print(f"Не удалось удалить {file_path}: {e}")
 
 def get_filtered_messages(senders, one_day_ago):
-    """Извлечение сообщений из Outlook по отправителям и времени."""
+    """Извлечение сообщений из всех подключенных почтовых аккаунтов."""
     outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
-    inbox = outlook.GetDefaultFolder(6)
-    messages = inbox.Items
-    messages.Sort("[ReceivedTime]", True)
     filtered_messages = []
 
-    for message in messages:
-        if message.ReceivedTime > one_day_ago:
-            sender_email = message.SenderEmailAddress.lower()
-            if sender_email in senders or any(sender_email.endswith(s) for s in senders):
-                filtered_messages.append(message)
+    def process_folder(folder):
+        if folder.Name.lower() in ["inbox", "входящие"]:
+            messages = folder.Items
+            messages.Sort("[ReceivedTime]", True)
+            for message in messages:
+                if message.ReceivedTime > one_day_ago:
+                    sender_email = message.SenderEmailAddress.lower()
+                    if sender_email in senders or any(sender_email.endswith(s) for s in senders):
+                        filtered_messages.append(message)
+
+        if folder.Folders.Count > 0:
+            for subfolder in folder.Folders:
+                process_folder(subfolder)
+
+    for account in outlook.Folders:
+        for folder in account.Folders:
+            process_folder(folder)
 
     return filtered_messages
 
@@ -53,20 +61,16 @@ def keep_only_latest_files(attachments_saved):
     }
 
     for sender, files in attachments_saved.items():
-        # Обрабатываем только специальные случаи
         if sender in special_criteria:
-            # Фильтруем файлы по каждому критерию и сохраняем только самые новые
             for criterion in special_criteria[sender]:
                 relevant_files = [file for file in files if criterion in file[0].lower()]
                 if relevant_files:
-                    latest_file = max(relevant_files, key=lambda x: x[1])  # Определение самого нового файла по времени
-                    # Удаление всех кроме последнего файла
+                    latest_file = max(relevant_files, key=lambda x: x[1])
                     for file, _ in relevant_files:
                         if file != latest_file[0]:
                             os.unlink(file)
                             print(f"Удалён старый файл: {file}")
         else:
-            # Для остальных отправителей сохраняем последний файл
             if len(files) > 1:
                 latest_file = max(files, key=lambda x: x[1])
                 for file, _ in files:
@@ -74,13 +78,13 @@ def keep_only_latest_files(attachments_saved):
                         os.unlink(file)
                         print(f"Удалён старый файл: {file}")
 
-
 def outlook_utile():
     senders = ["prices_export@shate-m.com", "post@mx.forum-auto.ru", "prices@favorit-parts.ru", "krsk_price@mail2.tpm.ru", "noreply@berg.ru"]
     save_folder = r"C:\Users\evgen\repo\ugkorea\Output"
     clean_output_folder(save_folder)
     one_day_ago = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=1)
     filtered_messages = get_filtered_messages(senders, one_day_ago)
+    print(f"Найдено сообщений: {len(filtered_messages)}")
     save_attachments_from_messages(filtered_messages, save_folder)
 
 if __name__ == "__main__":
