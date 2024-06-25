@@ -6,5 +6,5 @@ db/config.ini
 db/config.py
 extensions.txt
 data_upload_errors.log
-"**/__pycache__/" 
+**/__pycache__/ 
 *.pyc

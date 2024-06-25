@@ -5,6 +5,6 @@ python -m from_folder_to_df.outlook_utils
 echo Save prices in Output.
 python -m from_folder_to_df.prices_to_sql
 echo Prices downloaded to psql.
-python -m reglament_task.create_files_to_access
+python -m assessold.create_files_to_access
 echo files for access is ready.
 pause
