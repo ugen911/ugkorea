@@ -139,8 +139,67 @@ filtered_stock_pivot = stock_pivot[columns_to_keep]
 
 # Преобразование всех колонок, содержащих "stock", в целочисленный тип
 stock_columns = [col for col in filtered_stock_pivot.columns if 'stock' in col]
-filtered_stock_pivot[stock_columns] = filtered_stock_pivot[stock_columns].astype(int)
+filtered_stock_pivot.loc[:, stock_columns] = filtered_stock_pivot[stock_columns].astype(int)
 
 # Проверка и вывод итоговой информации после фильтрации колонок
 print("Итоговая таблица (filtered_stock_pivot):")
 print(filtered_stock_pivot.head())
+
+price_df['period'] = price_df['period'].apply(lambda x: pd.to_datetime(f"01.{x}", format='%d.%m.%Y') + pd.offsets.MonthEnd(1))
+# Преобразуем колонку period в формат datetime для price_df
+price_df['period'] = pd.to_datetime(price_df['period'], format='%d.%m.%Y')
+price_df['price'] = pd.to_numeric(price_df['price'], errors='coerce').fillna(0).astype(int)
+# Добавляем колонку year_month для группировки по месяцам
+price_df['year_month'] = price_df['period'].dt.to_period('M')
+
+
+
+# Установка колонки 'kod' в качестве индекса
+price_df.set_index('kod', inplace=True)
+
+# Разворачиваем таблицу так, чтобы каждый столбец представлял собой месяц цен
+price_pivot = price_df.pivot_table(index='kod', columns='year_month', values='price', fill_value=0)
+
+# Получаем текущий месяц
+current_month = price_pivot.columns.max()
+
+# Добавляем колонки для текущего месяца и предыдущих 19 месяцев
+for i in range(20):
+    month_col = current_month - i
+    col_name = 'Price current' if i == 0 else (f'Price prev' if i == 1 else f'Price prev-{i-1}')
+    if month_col in price_pivot.columns:
+        price_pivot[col_name] = price_pivot[month_col]
+    else:
+        price_pivot[col_name] = 0
+
+# Определяем период для Price prev-18
+prev_18_period = current_month - 19
+oldest_period = prev_18_period - 1
+
+# Добавляем колонку Price oldest
+if oldest_period in price_pivot.columns:
+    price_pivot['Price oldest'] = price_pivot[oldest_period]
+else:
+    price_pivot['Price oldest'] = 0
+
+# Перенос индекса в колонку kod
+price_pivot.reset_index(inplace=True)
+
+# Оставляем только колонки, в названии которых есть "Price"
+columns_to_keep = [col for col in price_pivot.columns if 'Price' in str(col) or col == 'kod']
+filtered_price_pivot = price_pivot[columns_to_keep]
+
+# Преобразование всех колонок, содержащих "Price", в числовой тип
+price_columns = [col for col in filtered_price_pivot.columns if 'Price' in col]
+filtered_price_pivot.loc[:, price_columns] = filtered_price_pivot[price_columns].astype(float)
+
+# Проверка и вывод итоговой информации после фильтрации колонок
+print("Итоговая таблица (filtered_price_pivot):")
+print(filtered_price_pivot.head())
+
+# Save the dataframes to separate CSV files
+sales_pivot.to_csv('sales_pivot.csv', index=False, encoding='windows-1251')
+filtered_stock_pivot.to_csv('stock_pivot.csv', index=False, encoding='windows-1251')
+filtered_price_pivot.to_csv('price_pivot.csv', index=False, encoding='windows-1251')
+
+print("The data has been successfully saved to separate CSV files for sales, stock, and price data.")
