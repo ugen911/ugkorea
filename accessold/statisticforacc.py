@@ -1,5 +1,6 @@
 import pandas as pd
 from ugkorea.db.database import get_db_engine
+import os
 
 # Подключение к базе данных
 engine = get_db_engine()
@@ -8,29 +9,6 @@ engine = get_db_engine()
 query_prodazhi = "SELECT kod, kolichestvo, period FROM prodazhi"
 prodazhi_df = pd.read_sql(query_prodazhi, engine)
 prodazhi_df.name = "prodazhi"
-
-# Получение данных из таблицы ostatkitovarovnakonetskazhdogomesjatsa с нужными колонками и переименованием
-query_stock = """
-SELECT 
-    konetsmesjatsa AS period, 
-    kolichestvo, 
-    nomenklaturakod AS kod 
-FROM ostatkitovarovnakonetskazhdogomesjatsa
-"""
-stock_df = pd.read_sql(query_stock, engine)
-stock_df.name = "stock"
-
-# Получение данных из таблицы tsenynakonetsmesjatsa с фильтрацией и переименованием
-query_price = """
-SELECT 
-    konetsmesjatsa AS period, 
-    tsena AS price, 
-    kod 
-FROM tsenynakonetsmesjatsa 
-WHERE tiptsen = 'Основной тип цен продажи'
-"""
-price_df = pd.read_sql(query_price, engine)
-price_df.name = "price"
 
 # Преобразуем колонку period в формат datetime для prodazhi_df
 prodazhi_df['period'] = pd.to_datetime(prodazhi_df['period'], format='%d.%m.%Y')
@@ -83,123 +61,10 @@ sales_pivot.reset_index(inplace=True)
 # Выводим итоговую информацию после добавления и переименования столбцов
 print(sales_pivot.head())
 
-# Преобразование колонки kolichestvo в числовой тип данных, замена некорректных значений на 0 и преобразование в int
-# Добавление последнего дня месяца к дате
-stock_df['period'] = stock_df['period'].apply(lambda x: pd.to_datetime(f"01.{x}", format='%d.%m.%Y') + pd.offsets.MonthEnd(1))
-stock_df['kolichestvo'] = pd.to_numeric(stock_df['kolichestvo'], errors='coerce').fillna(0).astype(int)
-stock_df['year_month'] = stock_df['period'].dt.to_period('M')
+# Определяем путь для сохранения файла
+output_path = r'\\26.218.196.12\заказы\Евгений\sales_pivot.xlsx'
 
+# Сохранение результирующего DataFrame в XLSX файл
+sales_pivot.to_excel(output_path, index=False)
 
-# Переименование колонок для удобства
-stock_df = stock_df.rename(columns={'period': 'date', 'kolichestvo': 'stock', 'nomenklaturakod': 'kod'})
-
-
-# Проверка наличия некорректных значений в колонке 'kod'
-invalid_kod_rows = stock_df[stock_df['kod'].str.contains('ck', na=False)]
-if not invalid_kod_rows.empty:
-    print("Найдены строки с 'ck' перед установкой индекса:")
-    print(invalid_kod_rows)
-
-# Установка колонки 'kod' в качестве индекса
-stock_df.set_index('kod', inplace=True)
-
-# Разворачиваем таблицу так, чтобы каждый столбец представлял собой месяц запасов
-stock_pivot = stock_df.pivot_table(index='kod', columns='year_month', values='stock', fill_value=0)
-
-# Получаем текущий месяц
-current_month = stock_pivot.columns.max()
-
-# Добавляем колонки для текущего месяца и предыдущих 19 месяцев
-for i in range(20):
-    month_col = current_month - i
-    col_name = 'Текущий месяц' if i == 0 else (f'prev stock' if i == 1 else f'prev-{i-1} stock')
-    if month_col in stock_pivot.columns:
-        stock_pivot[col_name] = stock_pivot[month_col]
-    else:
-        stock_pivot[col_name] = 0
-
-
-# Определяем период для prev-18 stock
-prev_18_period = current_month - 19
-oldest_period = prev_18_period - 1
-
-# Добавляем колонку oldest stock
-if oldest_period in stock_pivot.columns:
-    stock_pivot['oldest stock'] = stock_pivot[oldest_period]
-else:
-    stock_pivot['oldest stock'] = 0
-
-# Перенос индекса в колонку kod
-stock_pivot.reset_index(inplace=True)
-
-# Оставляем только колонки, в названии которых есть "stock"
-columns_to_keep = [col for col in stock_pivot.columns if 'stock' in str(col) or col == 'kod']
-filtered_stock_pivot = stock_pivot[columns_to_keep]
-
-
-# Преобразование всех колонок, содержащих "stock", в целочисленный тип
-stock_columns = [col for col in filtered_stock_pivot.columns if 'stock' in col]
-filtered_stock_pivot.loc[:, stock_columns] = filtered_stock_pivot[stock_columns].astype(int)
-
-# Проверка и вывод итоговой информации после фильтрации колонок
-print("Итоговая таблица (filtered_stock_pivot):")
-print(filtered_stock_pivot.head())
-
-price_df['period'] = price_df['period'].apply(lambda x: pd.to_datetime(f"01.{x}", format='%d.%m.%Y') + pd.offsets.MonthEnd(1))
-# Преобразуем колонку period в формат datetime для price_df
-price_df['period'] = pd.to_datetime(price_df['period'], format='%d.%m.%Y')
-price_df['price'] = pd.to_numeric(price_df['price'], errors='coerce').fillna(0).astype(int)
-# Добавляем колонку year_month для группировки по месяцам
-price_df['year_month'] = price_df['period'].dt.to_period('M')
-
-
-
-# Установка колонки 'kod' в качестве индекса
-price_df.set_index('kod', inplace=True)
-
-# Разворачиваем таблицу так, чтобы каждый столбец представлял собой месяц цен
-price_pivot = price_df.pivot_table(index='kod', columns='year_month', values='price', fill_value=0)
-
-# Получаем текущий месяц
-current_month = price_pivot.columns.max()
-
-# Добавляем колонки для текущего месяца и предыдущих 19 месяцев
-for i in range(20):
-    month_col = current_month - i
-    col_name = 'Price current' if i == 0 else (f'Price prev' if i == 1 else f'Price prev-{i-1}')
-    if month_col in price_pivot.columns:
-        price_pivot[col_name] = price_pivot[month_col]
-    else:
-        price_pivot[col_name] = 0
-
-# Определяем период для Price prev-18
-prev_18_period = current_month - 19
-oldest_period = prev_18_period - 1
-
-# Добавляем колонку Price oldest
-if oldest_period in price_pivot.columns:
-    price_pivot['Price oldest'] = price_pivot[oldest_period]
-else:
-    price_pivot['Price oldest'] = 0
-
-# Перенос индекса в колонку kod
-price_pivot.reset_index(inplace=True)
-
-# Оставляем только колонки, в названии которых есть "Price"
-columns_to_keep = [col for col in price_pivot.columns if 'Price' in str(col) or col == 'kod']
-filtered_price_pivot = price_pivot[columns_to_keep]
-
-# Преобразование всех колонок, содержащих "Price", в числовой тип
-price_columns = [col for col in filtered_price_pivot.columns if 'Price' in col]
-filtered_price_pivot.loc[:, price_columns] = filtered_price_pivot[price_columns].astype(float)
-
-# Проверка и вывод итоговой информации после фильтрации колонок
-print("Итоговая таблица (filtered_price_pivot):")
-print(filtered_price_pivot.head())
-
-# Save the dataframes to separate CSV files
-sales_pivot.to_csv('sales_pivot.csv', index=False, encoding='windows-1251')
-filtered_stock_pivot.to_csv('stock_pivot.csv', index=False, encoding='windows-1251')
-filtered_price_pivot.to_csv('price_pivot.csv', index=False, encoding='windows-1251')
-
-print("The data has been successfully saved to separate CSV files for sales, stock, and price data.")
+print(f"The data has been successfully saved to an XLSX file at {output_path}.")
