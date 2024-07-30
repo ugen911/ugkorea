@@ -9,4 +9,8 @@ python -m reglament_task.upushspros
 echo Upushennii spros ready.
 python -m reglament_task.nomenk_class
 echo Nomenklatura classification ready.
+python -m accessold.statisticforacc
+python -m accessold.stockend
+python -m accessold.priceendmonth
+echo statistic for end of month ready
 pause
