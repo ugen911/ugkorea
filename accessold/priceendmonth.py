@@ -13,7 +13,6 @@ WHERE table_name = 'priceendmonth'
 
 run_update = False
 
-
 if not pd.read_sql_query(query_check, engine).empty:
     df_priceendmonth = pd.read_sql_query("SELECT * FROM priceendmonth", engine)
     
@@ -125,9 +124,12 @@ if run_update:
                 price_at_date = last_change['tsena']
             else:
                 # Если изменений не было, используем текущую цену (до создания товара)
-                creation_date = df_nomenklatura.loc[df_nomenklatura['kod'] == kod, 'datasozdanija'].values[0]
-                if date < creation_date:
-                    price_at_date = 0  # Цена до создания товара равна 0
+                if not df_nomenklatura.loc[df_nomenklatura['kod'] == kod, 'datasozdanija'].empty:
+                    creation_date = df_nomenklatura.loc[df_nomenklatura['kod'] == kod, 'datasozdanija'].values[0]
+                    if date < creation_date:
+                        price_at_date = 0  # Цена до создания товара равна 0
+                else:
+                    price_at_date = 0  # Обработка случая, если дата создания товара не найдена
 
             rows.append({'kod': kod, 'data': date, 'tsena': price_at_date})
         
