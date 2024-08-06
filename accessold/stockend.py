@@ -1,30 +1,3 @@
-"""
-Этот скрипт выполняет следующие задачи:
-
-1. Подключение к базе данных и получение данных из таблицы 'registrostatkitovarov'.
-2. Фильтрация данных:
-   - Удаление строк с отсутствующими значениями в колонке 'kolichestvo'.
-   - Оставление только строк, где колонка 'skladkompanii' равна "Основной склад компании".
-3. Преобразование данных:
-   - Преобразование колонки 'period' в тип данных datetime.
-   - Замена запятых на точки в колонке 'kolichestvo' и преобразование в тип данных float.
-4. Создание дополнительной колонки 'adjusted_kolichestvo', которая изменяет знак значений 'kolichestvo' в зависимости от колонки 'viddvizhenija'.
-5. Расчет начальных остатков на конец первого месяца и последующих месяцев.
-6. Создание сводной таблицы, показывающей остатки для каждого товара ('nomenklaturakod') по месяцам.
-7. Расчет текущих остатков на данный момент и добавление их в сводную таблицу.
-8. Сохранение сводной таблицы с текущими остатками в Excel файл.
-
-Библиотеки, используемые в скрипте:
-- pandas: для обработки и анализа данных.
-- datetime: для работы с датами и временем.
-- ugkorea.db.database: для подключения к базе данных.
-
-Пример использования:
-1. Запустите скрипт, убедившись, что у вас есть доступ к базе данных и установлены необходимые библиотеки.
-2. После выполнения скрипта, результат будет сохранен в файл 'pivot_table_with_current_balance.xlsx'.
-
-"""
-
 import pandas as pd
 from ugkorea.db.database import get_db_engine
 from datetime import datetime, timedelta
@@ -102,24 +75,19 @@ pivot_table = result_df.pivot(index='nomenklaturakod', columns='month', values='
 # Сортируем колонки по возрастанию месяцев
 pivot_table = pivot_table.sort_index(axis=1)
 
-# Вычисляем текущую дату и время
-current_time = datetime.now()
+# Преобразуем сводную таблицу обратно в длинный формат
+long_format_df = pivot_table.reset_index().melt(id_vars=['nomenklaturakod'], var_name='month', value_name='balance')
 
-# Фильтруем данные до текущей даты и времени
-current_df = dataframe[dataframe['period'] <= current_time]
+# Преобразуем значения 'month' в строки
+long_format_df['month'] = long_format_df['month'].astype(str)
 
-# Рассчитываем текущий остаток для каждого nomenklaturakod
-current_balances = current_df.groupby('nomenklaturakod').agg({'adjusted_kolichestvo': 'sum'}).reset_index()
-current_balances.columns = ['nomenklaturakod', 'current_balance']
+# Убираем колонку current_balance
+final_df = long_format_df
 
-# Добавляем текущий остаток в сводную таблицу
-pivot_table = pivot_table.merge(current_balances.set_index('nomenklaturakod'), on='nomenklaturakod', how='left')
-
-# Загружаем таблицу в базу данных в схему public с названием stockendmonth
-pivot_table.reset_index().to_sql('stockendmonth', engine, schema='public', if_exists='replace', index=False)
+# Загружаем таблицу в базу данных в схему public с названием stockendmonth в вертикальном формате
+final_df.to_sql('stockendmonth', engine, schema='public', if_exists='replace', index=False)
 
 # Выводим сообщение о том, что все сделано успешно
 print("Данные успешно загружены в таблицу 'stockendmonth' в схеме 'public'.")
 
-
-
+final_df.to_csv('stockpivot.csv')

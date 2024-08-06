@@ -16,9 +16,12 @@ run_update = False
 if not pd.read_sql_query(query_check, engine).empty:
     df_priceendmonth = pd.read_sql_query("SELECT * FROM priceendmonth", engine)
     
+    # Преобразуем столбец 'data' в datetime
+    df_priceendmonth['data'] = pd.to_datetime(df_priceendmonth['data'], format='%Y-%m')
+    
     # Определяем последний месяц в данных
-    last_month = (pd.Timestamp.today() - pd.DateOffset(months=1)).strftime('%m.%y')
-    if last_month in df_priceendmonth.columns:
+    last_month = (pd.Timestamp.today() - pd.DateOffset(months=1)).strftime('%Y-%m')
+    if any(df_priceendmonth['data'].dt.strftime('%Y-%m') == last_month):
         print("Данные актуальны. Обновление не требуется.")
     else:
         # В таблице нет данных за последний месяц, выполняем обновление
@@ -136,20 +139,13 @@ if run_update:
         result = pd.concat([result, pd.DataFrame(rows)], ignore_index=True)
 
     # Приводим результат к нужному формату
-    result['data'] = pd.to_datetime(result['data'])
+    result['data'] = result['data'].dt.strftime('%Y-%m')
     result['tsena'] = result['tsena'].astype(float)
 
-    # Создаем сводную таблицу
-    result_pivot = result.pivot_table(index='kod', columns=result['data'].dt.strftime('%m.%y'), values='tsena', aggfunc='first', fill_value=0)
-
-    # Сортируем столбцы по возрастанию даты
-    sorted_columns = sorted(result_pivot.columns, key=lambda x: pd.to_datetime(x, format='%m.%y'))
-    result_pivot = result_pivot.reindex(columns=sorted_columns)
-
-    print("result_pivot (сводная таблица):")
-    print(result_pivot.head())
+    print("result (вертикальная таблица):")
+    print(result.head())
 
     # Сохраняем результат в таблицу priceendmonth
-    result_pivot.to_sql('priceendmonth', engine, if_exists='replace', index=False)
+    result.to_sql('priceendmonth', engine, if_exists='replace', index=False)
 
     print("Данные успешно сохранены в таблицу priceendmonth.")

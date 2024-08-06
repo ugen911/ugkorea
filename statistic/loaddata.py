@@ -19,6 +19,7 @@ def load_and_process_data():
     prodazhi = pd.read_sql_table('prodazhi', engine)
     postuplenija = pd.read_sql_table('postuplenija', engine)
     stockendmonth = pd.read_sql_table('stockendmonth', engine)
+    priceendmonth = pd.read_sql_table('priceendmonth', engine)  # Добавлена загрузка таблицы priceendmonth
     groupanalogiold = pd.read_sql_table('groupanalogiold', engine)
     typedetailgen = pd.read_sql_table('typedetailgen', engine)
 
@@ -30,18 +31,22 @@ def load_and_process_data():
     prodazhi = trim_whitespace(prodazhi)
     postuplenija = trim_whitespace(postuplenija)
     stockendmonth = trim_whitespace(stockendmonth)
+    priceendmonth = trim_whitespace(priceendmonth)  # Удаление пробелов в таблице priceendmonth
     groupanalogiold = trim_whitespace(groupanalogiold)
     typedetailgen = trim_whitespace(typedetailgen)
 
     # Фильтрация и выбор колонок для nomenklaturaold
     nomenklaturaold = nomenklaturaold[nomenklaturaold['pometkaudalenija'] == 'Нет']
-    nomenklaturaold = nomenklaturaold[['kod', 'artikul', 'proizvoditel', 'edizm']]
+    nomenklaturaold = nomenklaturaold[['kod','naimenovanie', 'artikul', 'proizvoditel', 'edizm']]
 
     # Выбор колонок и преобразование дат для nomenklatura
-    nomenklatura = nomenklatura[['kod', 'datasozdanija', 'roditel']]
+    nomenklatura = nomenklatura[['kod', 'datasozdanija', 'roditel', 'vidnomenklatury']]
     nomenklatura['datasozdanija'] = nomenklatura['datasozdanija'].replace('', '31.12.2021')
     nomenklatura['datasozdanija'] = pd.to_datetime(nomenklatura['datasozdanija'], format='%d.%m.%Y', errors='coerce')
     nomenklatura['datasozdanija'] = nomenklatura['datasozdanija'].fillna(pd.Timestamp('2021-12-31'))
+
+    # Оставляем только те товары, у которых vidnomenklatury равен 'Товар'
+    nomenklatura = nomenklatura[nomenklatura['vidnomenklatury'] == 'Товар']
 
     # Фильтрация и выбор колонок для prodazhi
     prodazhi = prodazhi[['kod', 'kolichestvo', 'period']]
@@ -66,17 +71,17 @@ def load_and_process_data():
     # Группировка postuplenija по kod и data с суммированием kolichestvo
     postuplenija = postuplenija.groupby(['kod', 'data']).agg({'kolichestvo': 'sum'}).reset_index()
 
-    # Преобразование stockendmonth в вертикальный формат
-    stockendmonth_long = pd.melt(stockendmonth, id_vars=['nomenklaturakod'], var_name='date', value_name='balance')
+    # Переименование колонки nomenklaturakod в kod в таблице stockendmonth
+    stockendmonth.rename(columns={'nomenklaturakod': 'kod'}, inplace=True)
+    # Фильтрация и выбор колонок для stockendmonth
+    stockendmonth = stockendmonth[['kod', 'month', 'balance']]
+    stockendmonth['month'] = pd.to_datetime(stockendmonth['month'], format='%Y-%m', errors='coerce')
 
-    # Переименование колонки nomenklaturakod в kod
-    stockendmonth_long.rename(columns={'nomenklaturakod': 'kod'}, inplace=True)
-
-    # Проверка значений в колонке 'date' и преобразование их в строки
-    stockendmonth_long['date'] = stockendmonth_long['date'].apply(lambda x: str(x) if not pd.isna(x) else '')
-
-    # Преобразование значений в колонке 'date' в формат datetime
-    stockendmonth_long['date'] = pd.to_datetime(stockendmonth_long['date'], format='%Y-%m', errors='coerce')
+    # Переименование колонки nomenklaturakod в kod в таблице priceendmonth
+    priceendmonth.rename(columns={'nomenklaturakod': 'kod'}, inplace=True)
+    # Фильтрация и выбор колонок для priceendmonth
+    priceendmonth = priceendmonth[['kod', 'data', 'tsena']]
+    priceendmonth['data'] = pd.to_datetime(priceendmonth['data'], format='%Y-%m', errors='coerce')
 
     # Переименование колонки kod_1s в kod в таблице groupanalogiold
     groupanalogiold.rename(columns={'kod_1s': 'kod'}, inplace=True)
@@ -88,5 +93,21 @@ def load_and_process_data():
     nomenklatura_merged = pd.merge(nomenklatura_merged, groupanalogiold, on='kod', how='left')
     nomenklatura_merged = pd.merge(nomenklatura_merged, typedetailgen, on='kod', how='left')
 
-    return nomenklatura_merged, stockendmonth_long, postuplenija, prodazhi
+    # Оставляем только те строки, которые есть в nomenklatura
+    valid_kods = nomenklatura['kod']
+    nomenklatura_merged = nomenklatura_merged[nomenklatura_merged['kod'].isin(valid_kods)]
+    stockendmonth = stockendmonth[stockendmonth['kod'].isin(valid_kods)]
+    priceendmonth = priceendmonth[priceendmonth['kod'].isin(valid_kods)]
+    postuplenija = postuplenija[postuplenija['kod'].isin(valid_kods)]
+    prodazhi = prodazhi[prodazhi['kod'].isin(valid_kods)]
 
+    return nomenklatura_merged, stockendmonth, priceendmonth, postuplenija, prodazhi
+
+if __name__ == "__main__":
+    nomenklatura, stockendmonth, priceendmonth, postuplenija, prodazhi = load_and_process_data()
+    print("Data loaded and processed successfully.")
+    print("nomenklatura columns:", nomenklatura.columns)
+    print("stockendmonth columns:", stockendmonth.columns)
+    print("priceendmonth columns:", priceendmonth.columns)
+    print("postuplenija columns:", postuplenija.columns)
+    print("prodazhi columns:", prodazhi.columns)
