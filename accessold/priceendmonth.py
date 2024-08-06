@@ -99,44 +99,37 @@ if run_update:
     date_range = pd.date_range(start=earliest_date, end=pd.Timestamp.today(), freq='ME')
 
     # Создаем DataFrame для хранения цен на конец каждого месяца
-    result = pd.DataFrame()
+    result = pd.DataFrame({'data': date_range.repeat(df_priceactual.shape[0])})
+    result['kod'] = list(df_priceactual.index) * len(date_range)
+    result = result.sort_values(by=['kod', 'data']).reset_index(drop=True)
 
-    # Проходим по каждому товару в актуальных ценах
-    for kod in df_priceactual.index.unique():
-        # Получаем актуальную цену товара
-        if kod in df_priceactual.index:
-            current_price = df_priceactual.loc[kod, 'tsena']
-        else:
-            continue  # Пропустить если код не найден в df_priceactual
+    # Подготовка данных о датах создания товаров
+    df_nomenklatura = df_nomenklatura.set_index('kod')
+    creation_dates = df_nomenklatura['datasozdanija']
 
-        # Отбираем все изменения цен для данного товара
-        price_changes = df_combined[df_combined['kod'] == kod].sort_values('data')
+    # Подготовка таблицы изменений цен для быстрого доступа
+    df_combined = df_combined.sort_values(by=['kod', 'data'])
+    df_combined = df_combined.set_index(['kod', 'data']).sort_index()
 
-        # Устанавливаем текущую цену на актуальную дату
-        price_at_date = current_price
+    # Функция для получения последней цены до текущей даты
+    def get_last_price(kod, date):
+        try:
+            changes = df_combined.loc[kod].loc[:date]
+            if not changes.empty:
+                return changes.iloc[-1]['tsena']
+        except KeyError:
+            pass
+        return None
 
-        # Заполняем цены на конец каждого месяца
-        rows = []
-        for date in date_range:
-            # Проверяем изменения цен до текущей даты
-            changes_until_date = price_changes[price_changes['data'] <= date]
+    # Применение функции для каждой строки
+    result['tsena'] = result.apply(lambda row: get_last_price(row['kod'], row['data']), axis=1)
 
-            if not changes_until_date.empty:
-                # Если были изменения, берем последнее изменение до текущей даты
-                last_change = changes_until_date.iloc[-1]
-                price_at_date = last_change['tsena']
-            else:
-                # Если изменений не было, используем текущую цену (до создания товара)
-                if not df_nomenklatura.loc[df_nomenklatura['kod'] == kod, 'datasozdanija'].empty:
-                    creation_date = df_nomenklatura.loc[df_nomenklatura['kod'] == kod, 'datasozdanija'].values[0]
-                    if date < creation_date:
-                        price_at_date = 0  # Цена до создания товара равна 0
-                else:
-                    price_at_date = 0  # Обработка случая, если дата создания товара не найдена
-
-            rows.append({'kod': kod, 'data': date, 'tsena': price_at_date})
-        
-        result = pd.concat([result, pd.DataFrame(rows)], ignore_index=True)
+    # Обработка NaN значений
+    result['tsena'] = result.apply(
+        lambda row: row['tsena'] if pd.notnull(row['tsena']) else (
+            0 if row['data'] < creation_dates.get(row['kod'], pd.Timestamp('2021-12-31')) else df_priceactual.loc[row['kod'], 'tsena']
+        ), axis=1
+    )
 
     # Приводим результат к нужному формату
     result['data'] = result['data'].dt.strftime('%Y-%m')
