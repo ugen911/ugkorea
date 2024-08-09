@@ -1,5 +1,4 @@
 import pandas as pd
-from ugkorea.db.database import get_db_engine
 
 # Функция для удаления пробелов
 def trim_whitespace(df):
@@ -7,10 +6,7 @@ def trim_whitespace(df):
         df[col] = df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
     return df
 
-def load_and_process_data():
-    # Подключение к базе данных
-    engine = get_db_engine()
-
+def load_and_process_data(engine):
     # Загрузка данных из таблиц
     nomenklaturaold = pd.read_sql_table('nomenklaturaold', engine)
     nomenklatura = pd.read_sql_table('nomenklatura', engine)
@@ -103,9 +99,9 @@ def load_and_process_data():
 
     return nomenklatura_merged, stockendmonth, priceendmonth, postuplenija, prodazhi
 
-def get_final_data():
+def get_final_data(engine):
     # Load data from database
-    nomenklatura, stockendmonth, priceendmonth, postuplenija, prodazhi = load_and_process_data()
+    nomenklatura, stockendmonth, priceendmonth, postuplenija, prodazhi = load_and_process_data(engine)
 
     # Rename 'month' column to 'date' in stockendmonth
     stockendmonth.rename(columns={'month': 'date'}, inplace=True)
@@ -174,22 +170,12 @@ def get_final_data():
     # Select only the required columns
     final_data = final_data[['kod', 'year_month', 'total_sales', 'balance', 'price']]
 
-    return final_data
-
-
-
-def prepare_nomenklatura_ml():
-    # Загружаем данные из базы данных
-    nomenklatura, _, _, _, _ = load_and_process_data()
-
     # Извлекаем нужные столбцы
     nomenklatura_ml = nomenklatura[['kod', 'proizvoditel', 'gruppa_analogov', 'type_detail']]
 
     # Удаляем строки с пропущенными значениями в 'proizvoditel'
     nomenklatura_ml = nomenklatura_ml.dropna(subset=['proizvoditel'])
 
-    # Кодируем 'proizvoditel' как категории
-    nomenklatura_ml['proizvoditel'] = nomenklatura_ml['proizvoditel'].astype('category').cat.codes
 
     # Обрабатываем пропущенные значения в 'type_detail'
     nomenklatura_ml['type_detail'] = nomenklatura_ml.apply(
@@ -199,8 +185,8 @@ def prepare_nomenklatura_ml():
     nomenklatura_ml['gruppa_analogov'] = nomenklatura_ml.apply(
         lambda row: row.name if pd.isna(row['gruppa_analogov']) else row['gruppa_analogov'], axis=1)
 
-    # Преобразуем 'gruppa_analogov' и 'type_detail' в категории
-    nomenklatura_ml['gruppa_analogov'] = nomenklatura_ml['gruppa_analogov'].astype('category').cat.codes
-    nomenklatura_ml['type_detail'] = nomenklatura_ml['type_detail'].astype('category').cat.codes
 
-    return nomenklatura_ml
+    return final_data, nomenklatura_ml
+
+
+
