@@ -165,8 +165,9 @@ def get_final_data(engine):
     priceendmonth_renamed = priceendmonth[['kod', 'year_month', 'tsena']].rename(columns={'tsena': 'price'})
     final_data = pd.merge(result_data, priceendmonth_renamed, on=['kod', 'year_month'], how='left').fillna({'price': 0})
 
-    # Set price to 0 where total_sales and balance are 0
-    final_data.loc[(final_data['total_sales'] == 0) & (final_data['balance'] == 0), 'price'] = 0
+    
+    final_data.loc[(final_data['total_sales'] == 0) & (final_data['balance'] == 0), ['balance', 'total_sales', 'price']] = None
+
 
     # Select only the required columns
     final_data = final_data[['kod', 'year_month', 'total_sales', 'balance', 'price']]
