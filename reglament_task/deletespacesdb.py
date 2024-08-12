@@ -23,7 +23,7 @@ def trim_whitespace_from_table(table_name: str, engine):
                     WHERE {column_name_quoted} IS NOT NULL;
                 """)
                 conn.execute(update_query)
-                print(f"Обновлен столбец {column['name']} в таблице {table_name}")
+                
 
 # Функция для переименования колонок в snake_case и нижний регистр
 def rename_columns_to_snake_case(table_name: str, engine):
@@ -42,7 +42,6 @@ def rename_columns_to_snake_case(table_name: str, engine):
                     RENAME COLUMN {old_name_quoted} TO {new_name_quoted};
                 """)
                 conn.execute(alter_query)
-                print(f"Переименован столбец {old_name} в {new_name} в таблице {table_name}")
 
 # Получаем список всех таблиц
 inspector = inspect(engine)

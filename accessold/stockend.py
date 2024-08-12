@@ -89,5 +89,3 @@ final_df.to_sql('stockendmonth', engine, schema='public', if_exists='replace', i
 
 # Выводим сообщение о том, что все сделано успешно
 print("Данные успешно загружены в таблицу 'stockendmonth' в схеме 'public'.")
-
-final_df.to_csv('stockpivot.csv')

@@ -54,5 +54,3 @@ if count > 0:
 else:
     print("Ошибка при сохранении таблицы в базу данных.")
 
-
-sales_long.to_csv('salespivot.csv')
