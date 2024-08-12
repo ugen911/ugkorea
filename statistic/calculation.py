@@ -21,6 +21,7 @@ merged_data = pd.merge(nomenklatura_ml, nomenklatura_merged[['kod', 'naimenovani
 union_data = pd.merge(merged_data, abc_xyz_analysis, on='kod', how='left')
 
 
+
 def calculate_sales_metrics(sales_data: pd.DataFrame, reference_date: datetime = datetime(2024, 8, 12)) -> pd.DataFrame:
     # Convert reference date to a Period object
     current_period = pd.Period(reference_date.strftime('%Y-%m'), freq='M')
@@ -65,3 +66,4 @@ sales_metrics = calculate_sales_metrics(sales_data)
 
 # Display the results
 print(sales_metrics.head())
+
