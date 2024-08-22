@@ -1,77 +1,130 @@
-from ugkorea.db.config import local_db_config  # Импорт конфигурации подключения
+import psycopg2
 import os
 import pandas as pd
 from transliterate import translit
 import logging
-from sqlalchemy import create_engine
 import warnings
+from ugkorea.db.config import remote_db_config, server_db_config  # Импорт конфигураций
 
 # Настройка логгирования
 logging.basicConfig(filename='data_upload_errors.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
-def get_db_engine(config):
-    connection_string = f"postgresql+psycopg2://{config['user']}:{config['password']}@{config['host']}:{config['port']}/{config['database']}"
-    return create_engine(connection_string)
+# Пути к директориям
+network_path = r'\\26.218.196.12\заказы\Евгений\Access\Табличные выгрузки1С'
+local_path = r'D:\NAS\заказы\Евгений\Access\Табличные выгрузки1С'
 
 def to_snake_case(s):
     s = translit(s, 'ru', reversed=True)
     s = s.lower().replace(' ', '_').replace('.', '_').replace('"', '').replace("'", '').replace(',', '').replace(';', '').replace('!', '').replace('?', '')
     return s
 
-def upload_csv_files(directory_path):
-    engine = get_db_engine(local_db_config)
-    if not engine:
-        return
+def upload_csv_files(directory_path, db_config):
+    try:
+        # Установление соединения с базой данных
+        connection = psycopg2.connect(**db_config)
+        cursor = connection.cursor()
+        
+        created_tables = []
 
-    created_tables = []
+        for filename in os.listdir(directory_path):
+            if filename.endswith('.csv'):
+                file_path = os.path.join(directory_path, filename)
+                # Удаление префиксов и транслитерация
+                modified_name = filename.replace('Выгрузка_', '').replace('Выгрузка', '')
+                # Преобразование в snake_case с транслитерацией для имени таблицы
+                table_name = to_snake_case(os.path.splitext(modified_name)[0])
 
-    for filename in os.listdir(directory_path):
-        if filename.endswith('.csv'):
-            file_path = os.path.join(directory_path, filename)
-            # Удаление префиксов и транслитерация
-            modified_name = filename.replace('Выгрузка_', '').replace('Выгрузка', '')
-            # Преобразование в snake_case с транслитерацией для имени таблицы
-            table_name = to_snake_case(os.path.splitext(modified_name)[0])
+                try:
+                    with warnings.catch_warnings(record=True) as w:
+                        warnings.simplefilter("always")
+                        data = pd.read_csv(file_path, sep=';', on_bad_lines='warn')
+                        for warning in w:
+                            if issubclass(warning.category, pd.errors.ParserWarning):
+                                logging.warning(f"Warning while parsing {filename}: {warning.message}")
 
-            try:
-                with warnings.catch_warnings(record=True) as w:
-                    warnings.simplefilter("always")
-                    data = pd.read_csv(file_path, sep=';', on_bad_lines='warn')
-                    for warning in w:
-                        if issubclass(warning.category, pd.errors.ParserWarning):
-                            logging.warning(f"Warning while parsing {filename}: {warning.message}")
-                
-                # Преобразование данных в кодировку UTF-8
-                data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8') if isinstance(x, str) else x))
-                
-                # Преобразование названий колонок в нижний регистр и snake_case с учетом транслитерации
-                data.columns = [to_snake_case(col) for col in data.columns]
-                
-                date_columns = [col for col in data.columns if 'data' in col]  # 'дата' transliterates to 'data'
-                for col in date_columns:
-                    data[col] = pd.to_datetime(data[col], errors='coerce', dayfirst=True)
+                    # Удаление пробелов и непечатных символов по краям в каждой колонке
+                    data = data.apply(lambda col: col.str.strip() if col.dtype == 'object' else col)
 
-                data.to_sql(table_name, engine, if_exists='replace', index=False)
-                print(f"Данные из {filename} успешно загружены в таблицу {table_name}.")
-                created_tables.append(table_name)
-            except Exception as e:
-                logging.error(f"Ошибка загрузки данных из файла {filename}: {e}")
-                print(f"Не удалось загрузить данные из {filename}: {e}")
+                    # Преобразование данных в кодировку UTF-8
+                    data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8') if isinstance(x, str) else x))
 
-    return created_tables
+                    # Преобразование названий колонок в нижний регистр и snake_case с учетом транслитерации
+                    data.columns = [to_snake_case(col) for col in data.columns]
 
-def print_first_five_rows(engine, table_name):
-    query = f"SELECT * FROM {table_name} LIMIT 5"
-    with engine.connect() as connection:
-        result = pd.read_sql(query, connection)
+                    # Преобразование столбцов с датами
+                    date_columns = [col for col in data.columns if 'data' in col]  # 'дата' transliterates to 'data'
+                    for col in date_columns:
+                        data[col] = pd.to_datetime(data[col], errors='coerce', dayfirst=True)
+                        # Заменяем NaT на None (NULL для PostgreSQL)
+                        data[col] = data[col].astype(object).where(data[col].notna(), None)
+
+                    # Создание таблицы в базе данных
+                    create_table_query = f"""
+                    CREATE TABLE IF NOT EXISTS {table_name} (
+                        {', '.join([f"{col} TEXT" for col in data.columns])}
+                    )
+                    """
+                    cursor.execute(create_table_query)
+                    connection.commit()
+
+                    # Вставка данных в таблицу
+                    for i, row in data.iterrows():
+                        insert_query = f"""
+                        INSERT INTO {table_name} ({', '.join(data.columns)}) 
+                        VALUES ({', '.join(['%s' for _ in data.columns])})
+                        """
+                        cursor.execute(insert_query, tuple(row))
+                    connection.commit()
+
+                    print(f"Данные из {filename} успешно загружены в таблицу {table_name}.")
+                    created_tables.append(table_name)
+
+                except Exception as e:
+                    logging.error(f"Ошибка загрузки данных из файла {filename}: {e}")
+                    print(f"Не удалось загрузить данные из {filename}: {e}")
+
+        return created_tables
+
+    except Exception as e:
+        logging.error(f"Ошибка при подключении к базе данных: {e}")
+        print(f"Ошибка при подключении к базе данных: {e}")
+
+    finally:
+        if 'connection' in locals() and connection:
+            cursor.close()
+            connection.close()
+            print("Соединение с базой данных закрыто")
+
+def print_first_five_rows(table_name, db_config):
+    try:
+        connection = psycopg2.connect(**db_config)
+        cursor = connection.cursor()
+        cursor.execute(f"SELECT * FROM {table_name} LIMIT 5")
+        rows = cursor.fetchall()
         print(f"Первые 5 строк из таблицы '{table_name}':")
-        print(result)
+        for row in rows:
+            print(row)
+    except Exception as e:
+        logging.error(f"Ошибка при чтении данных из таблицы {table_name}: {e}")
+        print(f"Ошибка при чтении данных из таблицы {table_name}: {e}")
+    finally:
+        if 'connection' in locals() and connection:
+            cursor.close()
+            connection.close()
+            print("Соединение с базой данных закрыто")
 
 if __name__ == "__main__":
-    network_path = r'\\26.218.196.12\заказы\Евгений\Access\Табличные выгрузки1С'
-    created_tables = upload_csv_files(network_path)
+    # Проверка доступности сетевой папки
+    if os.path.exists(network_path):
+        print(f"Используется сетевая папка: {network_path}")
+        created_tables = upload_csv_files(network_path, remote_db_config)
+    else:
+        print(f"Сетевая папка недоступна, используется локальная папка: {local_path}")
+        created_tables = upload_csv_files(local_path, server_db_config)
 
     # Вывод первых 5 строк из каждой созданной таблицы
-    engine = get_db_engine(local_db_config)
     for table_name in created_tables:
-        print_first_five_rows(engine, table_name)
+        if os.path.exists(network_path):
+            print_first_five_rows(table_name, remote_db_config)
+        else:
+            print_first_five_rows(table_name, server_db_config)

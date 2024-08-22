@@ -1,15 +1,12 @@
 import pandas as pd
 from sqlalchemy.exc import OperationalError
-from sqlalchemy import create_engine
+from sqlalchemy import text
 import random
 import string
 import re
 import transliterate
-from ugkorea.db.config import local_db_config
-
-def get_db_engine():
-    connection_string = f"postgresql+psycopg2://{local_db_config['user']}:{local_db_config['password']}@{local_db_config['host']}:{local_db_config['port']}/{local_db_config['database']}"
-    return create_engine(connection_string)
+from ugkorea.db.database import get_db_engine
+from ugkorea.db.config import remote_db_config  # Импорт конфигурации для проверки
 
 def load_data(file_path):
     try:
@@ -105,23 +102,31 @@ def export_to_db(engine, df, table_name, index_col='kod'):
 def print_first_five_rows(engine, table_name):
     query = f"SELECT * FROM {table_name} LIMIT 5"
     with engine.connect() as connection:
-        result = pd.read_sql(query, connection)
+        result = connection.execute(text(query))
+        rows = result.fetchall()
         print(f"Первые 5 строк из таблицы '{table_name}':")
-        print(result)
+        for row in rows:
+            print(row)
 
 def main():
+    # Подключение к базе данных
     engine = get_db_engine()
     if engine is None:
         print("Не удалось подключиться к базе данных.")
         return
-
-    data_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
-    analog_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
-
+    
+    # Определение путей к файлам в зависимости от базы данных
+    if remote_db_config['host'] == '26.218.196.12':
+        data_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
+        analog_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+    else:
+        data_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
+        analog_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+    
     data = load_data(data_file_path)
     if data is not None:
-        # Преобразуем данные в кодировку UTF-8
-        data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8') if isinstance(x, str) else x))
+        # Удаление непечатных символов и преобразование в кодировку UTF-8
+        data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8').strip() if isinstance(x, str) else x))
         
         nomenklatura, stock, price = prepare_data(data)
         export_to_db(engine, nomenklatura, 'nomenklaturaold')
@@ -130,8 +135,8 @@ def main():
 
     analog_data = prepare_analog_data(analog_file_path)
     if analog_data is not None:
-        # Преобразуем данные в кодировку UTF-8
-        analog_data = analog_data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8') if isinstance(x, str) else x))
+        # Удаление непечатных символов и преобразование в кодировку UTF-8
+        analog_data = analog_data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8').strip() if isinstance(x, str) else x))
         
         export_to_db(engine, analog_data, 'groupanalogiold', index_col='kod_1s')
 
