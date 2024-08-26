@@ -13,9 +13,6 @@ logging.basicConfig(filename='data_upload_errors.log', level=logging.INFO, forma
 network_path = r'\\26.218.196.12\заказы\Евгений\Access\Табличные выгрузки1С'
 local_path = r'D:\NAS\заказы\Евгений\Access\Табличные выгрузки1С'
 
-def check_directory_availability(path):
-    return os.path.exists(path)
-
 def to_snake_case(s):
     s = translit(s, 'ru', reversed=True)
     s = s.lower().replace(' ', '_').replace('.', '_').replace('"', '').replace("'", '').replace(',', '').replace(';', '').replace('!', '').replace('?', '')
@@ -117,17 +114,17 @@ def print_first_five_rows(table_name, db_config):
             print("Соединение с базой данных закрыто")
 
 if __name__ == "__main__":
-    # Проверка доступности локальной папки
-    if check_directory_availability(local_path):
-        print(f"Используется локальная папка: {local_path}")
-        created_tables = upload_csv_files(local_path, server_db_config)
-    else:
-        print(f"Локальная папка недоступна, используется сетевая папка: {network_path}")
+    # Проверка доступности сетевой папки
+    if os.path.exists(network_path):
+        print(f"Используется сетевая папка: {network_path}")
         created_tables = upload_csv_files(network_path, remote_db_config)
+    else:
+        print(f"Сетевая папка недоступна, используется локальная папка: {local_path}")
+        created_tables = upload_csv_files(local_path, server_db_config)
 
     # Вывод первых 5 строк из каждой созданной таблицы
     for table_name in created_tables:
-        if check_directory_availability(local_path):
-            print_first_five_rows(table_name, server_db_config)
-        else:
+        if os.path.exists(network_path):
             print_first_five_rows(table_name, remote_db_config)
+        else:
+            print_first_five_rows(table_name, server_db_config)
