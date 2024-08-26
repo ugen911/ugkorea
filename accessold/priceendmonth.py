@@ -176,3 +176,4 @@ if run_update:
     result.to_sql('priceendmonth', engine, if_exists='replace', index=False)
 
     print("Данные успешно сохранены в таблицу priceendmonth.")
+###
