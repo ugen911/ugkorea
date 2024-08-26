@@ -147,23 +147,34 @@ if run_update:
 
     print("Расчет последней цены до текущей даты...")
     # Функция для получения последней цены до текущей даты
+    # Функция для получения последней цены до текущей даты с ограниченным выводом ошибок
+    error_count = 0
+    max_errors_to_display = 5
+
     def get_last_price(kod, date):
+        global error_count
         try:
             changes = df_combined.loc[kod].loc[:date]
             if not changes.empty:
                 return changes.iloc[-1]['tsena']
         except KeyError as e:
-            print(f"KeyError: {e} для koda: {kod} и даты: {date}")
+            if error_count < max_errors_to_display:
+                print(f"KeyError: {e} для koda: {kod} и даты: {date}")
+            error_count += 1
         return None
 
     # Применение функции для каждой строки
     result['tsena'] = result.apply(lambda row: get_last_price(row['kod'], row['data']), axis=1)
 
     print("Обработка отсутствующих значений (NaN)...")
-    # Обработка NaN значений
+    # Определяем минимальную дату в таблице creation_dates
+    min_creation_date = creation_dates.min()
+
+    # Обновляем логику обработки
     result['tsena'] = result.apply(
         lambda row: row['tsena'] if pd.notnull(row['tsena']) else (
-            0 if row['data'] < creation_dates.get(row['kod'], pd.Timestamp('2021-12-31')) else df_priceactual.loc.get(row['kod'], {}).get('tsena', None)
+            0 if row['data'] < min_creation_date else 
+            None  # Если row['kod'] отсутствует в df_priceactual, значит цена отсутствует
         ), axis=1
     )
 
@@ -176,4 +187,3 @@ if run_update:
     result.to_sql('priceendmonth', engine, if_exists='replace', index=False)
 
     print("Данные успешно сохранены в таблицу priceendmonth.")
-###
