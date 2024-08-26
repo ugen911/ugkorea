@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
@@ -108,6 +109,9 @@ def print_first_five_rows(engine, table_name):
         for row in rows:
             print(row)
 
+def check_directory_availability(path):
+    return os.path.exists(path)
+
 def main():
     # Подключение к базе данных
     engine = get_db_engine()
@@ -115,13 +119,16 @@ def main():
         print("Не удалось подключиться к базе данных.")
         return
     
-    # Определение путей к файлам в зависимости от базы данных
-    if remote_db_config['host'] == '26.218.196.12':
-        data_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
-        analog_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+    # Определение путей к файлам
+    local_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access'
+    remote_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access'
+    
+    if check_directory_availability(local_path):
+        data_file_path = os.path.join(local_path, 'ОстаткиДляАнализа.xls')
+        analog_file_path = os.path.join(local_path, 'analogi.xls')
     else:
-        data_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
-        analog_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+        data_file_path = os.path.join(remote_path, 'ОстаткиДляАнализа.xls')
+        analog_file_path = os.path.join(remote_path, 'analogi.xls')
     
     data = load_data(data_file_path)
     if data is not None:

@@ -6,6 +6,10 @@ from ugkorea.db.config import remote_db_config, server_db_config  # Импорт
 # Настройка логгирования
 logging.basicConfig(filename='data_upload_errors.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
 
+def check_directory_availability(path):
+    """Проверяет доступность указанной директории."""
+    return os.path.exists(path)
+
 def get_db_engine():
     """
     Определяет, использовать ли локальную или сетевую базу данных, и возвращает SQLAlchemy engine для подключения к базе данных.
@@ -15,12 +19,12 @@ def get_db_engine():
     network_path = r'\\26.218.196.12\заказы\Евгений\Access\Табличные выгрузки1С'
     local_path = r'D:\NAS\заказы\Евгений\Access\Табличные выгрузки1С'
 
-    if os.path.exists(network_path):
-        print(f"Используется сетевая база данных (путь: {network_path})")
-        db_config = remote_db_config
-    else:
-        print(f"Сетевая папка недоступна, используется локальная база данных (путь: {local_path})")
+    if check_directory_availability(local_path):
+        print(f"Используется локальная база данных (путь: {local_path})")
         db_config = server_db_config
+    else:
+        print(f"Локальная папка недоступна, используется сетевая база данных (путь: {network_path})")
+        db_config = remote_db_config
     
     try:
         # Создание SQLAlchemy engine
