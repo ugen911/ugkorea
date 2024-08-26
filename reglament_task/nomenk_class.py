@@ -214,9 +214,3 @@ if __name__ == "__main__":
     missing_types = merged_df[merged_df['type_detail'].isnull()]
     print("Строки без типа детали:")
     print(missing_types[['naimenovanie']])
-
-    # Выгрузка DataFrame в CSV файл
-    output_path = r'C:\Users\evgen\repo\merged_data.csv'
-    merged_df.to_csv(output_path, sep=';', index=False, encoding='windows-1251')
-
-    print(f'DataFrame успешно выгружен в {output_path}')
