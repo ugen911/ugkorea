@@ -24,18 +24,25 @@ def snake_case(column_name):
     return column_name
 
 def prepare_data(data):
+    # Convert columns to snake_case
     data.columns = [snake_case(col) for col in data.columns]
+    # Rename specific columns
     data.rename(columns={'polnoenaimenovanie': 'naimenovanie'}, inplace=True)
     
+    # Prepare nomenclature data
     nomenklatura = data[['kod', 'naimenovanie', 'artikul', 'proizvoditel', 'edizm', 'pometkaudalenija']]
     nomenklatura = nomenklatura[['kod', 'artikul', 'proizvoditel', 'naimenovanie', 'edizm', 'pometkaudalenija']]
     
+    # Prepare stock data and convert to float
     stock = data[['kod', 'konost']].copy()
-    stock['osnsklad'] = stock['konost'].fillna(0).astype(int)
+    stock['osnsklad'] = data['konost'].fillna(0).replace(',', '.', regex=True).astype(float)
     stock.drop(columns=['konost'], inplace=True)
-    stock['zakazy_sklad'] = data['ostatokzakazy'].fillna(0).astype(int)
+    stock['zakazy_sklad'] = data['ostatokzakazy'].fillna(0).replace(',', '.', regex=True).astype(float)
     
-    price = data[['kod', 'tsenazakup', 'tsenarozn']]
+    # Prepare price data and convert to float
+    price = data[['kod', 'tsenazakup', 'tsenarozn']].copy()
+    price['tsenazakup'] = price['tsenazakup'].fillna(0).replace(',', '.', regex=True).astype(float)
+    price['tsenarozn'] = price['tsenarozn'].fillna(0).replace(',', '.', regex=True).astype(float)
     
     return nomenklatura, stock, price
 
