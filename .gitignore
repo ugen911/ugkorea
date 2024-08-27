@@ -5,7 +5,8 @@ errors.txt
 db/config.ini
 db/config.py
 extensions.txt
-data_upload_errors.log
-**/__pycache__/ 
+data_upload_errors.log 
+**/__pycache__/
 *.pyc
-__pycache__
+__pycache__/
+
