@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
@@ -122,13 +123,19 @@ def main():
         print("Не удалось подключиться к базе данных.")
         return
     
-    # Определение путей к файлам в зависимости от базы данных
-    if remote_db_config['host'] == '26.218.196.12':
-        data_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
+    # Определение путей к файлам в зависимости от доступности
+    local_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
+    remote_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
+    
+    if os.path.exists(local_path):
+        data_file_path = local_path
+        analog_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+    elif os.path.exists(remote_path):
+        data_file_path = remote_path
         analog_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
     else:
-        data_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
-        analog_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+        print("Ни один из путей к файлам не доступен.")
+        return
     
     data = load_data(data_file_path)
     if data is not None:
