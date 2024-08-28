@@ -11,4 +11,5 @@ python -m accessold.statisticforacc
 python -m accessold.stockend
 python -m accessold.priceendmonth
 echo statistic for end of month ready
-pause
+timeout /t 10 >nul
+exit
