@@ -11,5 +11,9 @@ python -m accessold.statisticforacc
 python -m accessold.stockend
 python -m accessold.priceendmonth
 echo statistic for end of month ready
+
+rem Запись информации о выполнении в лог-файл
+echo Процедура %~nx0 выполнена в %date% %time% >> log.txt
+
 timeout /t 10 >nul
 exit
