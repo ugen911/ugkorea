@@ -12,3 +12,4 @@ data_upload_errors.log
 __pycache__/
 **/config.py/
 mail/config.py
+log.txt
