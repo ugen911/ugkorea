@@ -1,8 +1,7 @@
-### Переделывает адреса страниц для фото на дром
-
 import os
 import re
 import pandas as pd
+from ugkorea.db.database import get_db_engine
 
 # Путь к папке с файлами
 folder_path = r'C:\Users\evgen\Downloads'
@@ -50,6 +49,15 @@ try:
 
     print(f"Файл успешно обработан и сохранен: {output_path}")
 
+    # Подключение к базе данных
+    engine = get_db_engine()
+
+    # Выгрузка данных в таблицу photoadress
+    df[['sku', 'adress']].to_sql('photoadress', con=engine, if_exists='replace', index=False)
+
+    print("Данные успешно выгружены в базу данных в таблицу photoadress.")
+
 except FileNotFoundError as e:
     print(e)
-
+except Exception as e:
+    print(f"Произошла ошибка: {e}")
