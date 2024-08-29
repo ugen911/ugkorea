@@ -72,7 +72,7 @@ xlsx_path = os.path.join(output_dir, 'Прайс_дром_обновленные
 df_final.to_excel(xlsx_path, index=False)
 
 # Отправка Excel-файла по электронной почте
-to_email = 'evgenistroikin@ya.ru'
+to_email = 'UgKorea24-price-45877-1cb81c3ae5a3@baza.farpost.ru'
 subject = 'Прайс Дром Обновленные с Фото'
 body = 'Во вложении обновленный прайс с фото.'
 attachment_name = 'Прайс_дром_обновленные_с_фото.xlsx'
