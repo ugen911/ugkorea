@@ -5,7 +5,9 @@ import logging
 import time
 import random
 import pandas as pd
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from ugkorea.db.database import get_db_engine
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -18,6 +20,7 @@ import psutil
 
 # Настройка логирования
 logging.basicConfig(filename='errors.txt', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def setup_driver():
     chrome_options = Options()
@@ -38,7 +41,10 @@ def setup_driver():
     chrome_options.add_argument("--log-level=3")
     chrome_options.binary_location = "C:/Program Files/Google/chrome.exe"  # Укажите путь к вашему Chrome
 
-    service = Service('C:/Users/evgen/repo/ugkorea/drivers/chromedriver.exe')  # Укажите путь к вашему ChromeDriver
+    # Формируем путь к chromedriver
+    driver_path = os.path.expanduser('~/repo/ugkorea/drivers/chromedriver.exe')
+    
+    service = Service(driver_path)  # Укажите путь к вашему ChromeDriver
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -254,9 +260,10 @@ def main(debug_mode=False):
         if all_product_details:
             df = pd.DataFrame(all_product_details)
             df = df[['link', 'name', 'catalog_number', 'manufacturer', 'availability', 'stock', 'price']]
-            df.to_csv('product_details.csv', index=False)
+            engine = get_db_engine()
+            df.to_sql('autocoreec', engine, schema='prices', if_exists='replace', index=False)
             logging.info('Детали продуктов сохранены в product_details.csv')
-            print('Детали продуктов сохранены в product_details.csv')
+            print('Детали продуктов сохранены в autocoreec схема prices')
             print(df.head(20))
         else:
             logging.info('Детали продуктов не были скрапированы.')
