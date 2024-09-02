@@ -13,4 +13,4 @@ __pycache__/
 **/config.py/
 mail/config.py
 log.txt
-api/config.py/
+api/config.py
