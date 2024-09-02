@@ -1,5 +1,6 @@
 from ugkorea.db.database import get_db_engine
 import pandas as pd
+import re
 
 def get_final_df():
     """
@@ -21,9 +22,21 @@ def get_final_df():
     # Выполняем внутреннее соединение по полю 'kod'
     merged_df = pd.merge(nomenklaturaold_filtered, stockold_df, on='kod', how='inner')
 
-    # Оставляем только необходимые колонки и фильтруем по osnsklad > 0
+    # Оставляем только необходимые колонки
     final_df = merged_df[['kod', 'artikul', 'proizvoditel', 'osnsklad']]
-    final_df = final_df[final_df['osnsklad'] > 0]
+
+    # Проверяем на наличие маленькой латинской буквы в конце артикула
+    rows_to_add = []
+    for index, row in final_df.iterrows():
+        if re.match(r'.*[a-z]$', row['artikul']):
+            # Создаем копию строки с артикула без последней буквы
+            new_row = row.copy()
+            new_row['artikul'] = new_row['artikul'][:-1]
+            rows_to_add.append(new_row)
+
+    # Добавляем новые строки в DataFrame
+    if rows_to_add:
+        final_df = pd.concat([final_df, pd.DataFrame(rows_to_add)], ignore_index=True)
 
     # Переименовываем столбец osnsklad в stock
     final_df = final_df.rename(columns={'osnsklad': 'stock'})
