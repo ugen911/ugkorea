@@ -1,8 +1,9 @@
 import pandas as pd
 import requests
 from ugkorea.api.pricefor import get_final_df
-from ugkorea.api.config import API_KEY_BERG, BASE_URL_BERG
-
+from ugkorea.db.database import get_db_engine
+from ugkorea.api.config import BASE_URL_BERG, API_KEY_BERG
+from datetime import datetime
 
 # Переменная для включения/отключения режима отладки
 DEBUG_MODE = False  # True для включения отладки, False для полной обработки
@@ -19,7 +20,36 @@ def get_stock_info(item):
     }
     
     response = requests.get(url, params=params)
-    return response.json()
+    
+    # Проверяем статус ответа
+    if response.status_code != 200:
+        print(f"Error: Received status code {response.status_code} for item: {item}")
+        return None
+    
+    # Проверяем, что тело ответа не пустое
+    if not response.text:
+        print(f"Error: Empty response for item: {item}")
+        return None
+    
+    # Попробуем разобрать JSON
+    try:
+        data = response.json()
+    except requests.exceptions.JSONDecodeError:
+        print(f"Error decoding JSON for item: {item}, response text: {response.text}")
+        return None
+    
+    # Проверяем наличие ошибок в ответе
+    if 'errors' in data:
+        for error in data['errors']:
+            print(f"API Error for item: {item} - Code: {error['code']}, Text: {error['text']}")
+        return None
+    
+    return data
+
+def save_progress_to_csv(df, filename='partial_result.csv'):
+    """Сохраняет промежуточные результаты в CSV-файл."""
+    df.to_csv(filename, index=False)
+    print(f"Partial results saved to {filename}")
 
 # Получение датафрейма с помощью функции get_final_df
 df = get_final_df()
@@ -34,40 +64,81 @@ if not df.empty:
     # Определяем количество итераций в зависимости от режима отладки
     max_iterations = 20 if DEBUG_MODE else len(df)
     
-    for i in range(max_iterations):
-        item = {
-            'resource_article': df.loc[i, 'artikul'],
-            'brand_name': df.loc[i, 'proizvoditel']
-        }
-        
-        # Получение данных по текущему элементу
-        stock_info = get_stock_info(item)
-        
-        if 'resources' in stock_info and len(stock_info['resources']) > 0:
-            offers = stock_info['resources'][0]['offers']
+    try:
+        for i in range(max_iterations):
+            # Получение данных для текущей строки
+            kod = df.loc[i, 'kod']
+            artikul = df.loc[i, 'artikul']
+            proizvoditel = df.loc[i, 'proizvoditel']
             
-            # Фильтруем предложения по average_period <= 15 и ищем минимальную цену
-            valid_offers = [offer for offer in offers if offer['average_period'] <= 15]
+            # Вывод текущего прогресса
+            print(f"Processing item {i+1} of {max_iterations} - kod: {kod}, artikul: {artikul}, proizvoditel: {proizvoditel}")
             
-            if valid_offers:
-                min_price_offer = min(valid_offers, key=lambda x: x['price'])
-                result = {
-                    'article': stock_info['resources'][0]['article'],
-                    'brand': stock_info['resources'][0]['brand']['name'],
-                    'warehouse_name': min_price_offer['warehouse']['name'],
-                    'price': min_price_offer['price'],
-                    'quantity': min_price_offer['quantity'],
-                    'average_period': min_price_offer['average_period']
-                }
-                results.append(result)
-    
+            item = {
+                'resource_article': artikul,
+                'brand_name': proizvoditel
+            }
+            
+            # Получение данных по текущему элементу
+            stock_info = get_stock_info(item)
+            
+            if stock_info and 'resources' in stock_info and len(stock_info['resources']) > 0:
+                offers = stock_info['resources'][0]['offers']
+                
+                # Фильтруем предложения по условиям average_period <= 15 и reliability > 80
+                valid_offers = [
+                    offer for offer in offers 
+                    if offer['average_period'] <= 15 and offer['reliability'] > 80
+                ]
+                
+                if valid_offers:
+                    min_price_offer = min(valid_offers, key=lambda x: x['price'])
+                    result = {
+                        'kod': kod,
+                        'artikul': artikul,
+                        'proizvoditel': proizvoditel,
+                        'warehouse_name': min_price_offer['warehouse']['name'],
+                        'price': min_price_offer['price'],
+                        'quantity': min_price_offer['quantity'],
+                        'average_period': min_price_offer['average_period'],
+                        'reliability': min_price_offer['reliability']
+                    }
+                    results.append(result)
+            
+            # Периодически сохраняем промежуточные результаты
+            if (i + 1) % 100 == 0:  # Сохранение каждые 100 итераций
+                partial_df = pd.DataFrame(results)
+                save_progress_to_csv(partial_df)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        # Сохраняем результаты перед завершением работы в случае ошибки
+        if results:
+            final_df = pd.DataFrame(results)
+            save_progress_to_csv(final_df, filename='final_result_on_error.csv')
+        raise  # Перебрасываем исключение после сохранения
+
     # Преобразование списка результатов в DataFrame
     final_df = pd.DataFrame(results)
     
-    # Сохранение итогового DataFrame в файл
-    final_df.to_csv('final_stock_info.csv', index=False)  # Сохранение в CSV
-    # final_df.to_excel('final_stock_info.xlsx', index=False)  # Сохранение в Excel
+    # Добавляем колонки с меткой "berg" и текущей датой
+    final_df['source'] = 'berg'
+    final_df['date_checked'] = datetime.today().strftime('%Y-%m-%d')
     
-    print("Dataframe saved successfully.")
+    # Проверяем на дубликаты по `kod` и оставляем строки с минимальной ценой больше 0
+    final_df = final_df[final_df['price'] > 0]
+    final_df = final_df.loc[final_df.groupby('kod')['price'].idxmin()]
+
+    # Размещаем колонку `kod` слева всего датафрейма
+    final_df = final_df[['kod', 'artikul', 'proizvoditel', 'warehouse_name', 'price', 'quantity', 'average_period', 'reliability', 'source', 'date_checked']]
+    
+
+    # Получение движка для базы данных
+    engine = get_db_engine()
+    
+    # Загрузка датафрейма в базу данных в схему `prices` как таблицу `bergapi`
+    final_df.to_sql('bergapi', con=engine, schema='prices', if_exists='replace', index=False)
+    
+    print("Dataframe saved to the database successfully.")
 else:
     print("Dataframe is empty")

@@ -13,8 +13,12 @@ def get_final_df():
     nomenklaturaold_df = pd.read_sql_table('nomenklaturaold', engine)
     stockold_df = pd.read_sql_table('stockold', engine)
 
-    # Фильтруем строки, где pometkaudalenija имеет значение 'Нет'
-    nomenklaturaold_filtered = nomenklaturaold_df[nomenklaturaold_df['pometkaudalenija'] == 'Нет']
+    # Фильтруем строки, где pometkaudalenija имеет значение 'Нет' и proizvoditel не пустой
+    nomenklaturaold_filtered = nomenklaturaold_df[
+        (nomenklaturaold_df['pometkaudalenija'] == 'Нет') & 
+        (nomenklaturaold_df['proizvoditel'].notna()) & 
+        (nomenklaturaold_df['proizvoditel'] != '')
+    ]
 
     # Преобразуем столбец osnsklad в тип данных float
     stockold_df['osnsklad'] = stockold_df['osnsklad'].astype(float)
@@ -24,6 +28,9 @@ def get_final_df():
 
     # Оставляем только необходимые колонки
     final_df = merged_df[['kod', 'artikul', 'proizvoditel', 'osnsklad']]
+
+    # Фильтруем строки, где artikul содержит только латинские буквы и цифры
+    final_df = final_df[final_df['artikul'].apply(lambda x: bool(re.match(r'^[A-Za-z0-9]+$', x)))]
 
     # Проверяем на наличие маленькой латинской буквы в конце артикула
     rows_to_add = []
