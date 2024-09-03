@@ -1,3 +1,4 @@
+import time
 import os
 import pandas as pd
 import requests
@@ -5,6 +6,7 @@ from ugkorea.api.pricefor import get_final_df
 from ugkorea.db.database import get_db_engine
 from ugkorea.api.config import BASE_URL_BERG, API_KEY_BERG
 from datetime import datetime
+from tqdm import tqdm
 
 DEBUG_MODE = False  # True для включения отладки, False для полной обработки
 
@@ -20,7 +22,14 @@ def process_and_save_data():
             'items[0][brand_name]': item['brand_name']
         }
         
-        response = requests.get(url, params=params)
+        try:
+            response = requests.get(url, params=params, timeout=10)  # Увеличиваем время ожидания до 10 секунд
+        except requests.exceptions.ConnectTimeout:
+            print(f"Connection timeout occurred for item: {item}")
+            return None
+        except requests.exceptions.RequestException as e:
+            print(f"An error occurred: {e}")
+            return None
         
         # Проверяем статус ответа
         if response.status_code != 200:
@@ -52,7 +61,7 @@ def process_and_save_data():
         if not os.path.exists('output'):
             os.makedirs('output')
         df.to_csv(filename, index=False)
-        print(f"Partial results saved to {filename}")
+
 
     def remove_file(filename='output/partial_result.csv'):
         """Удаляет указанный файл."""
@@ -74,14 +83,12 @@ def process_and_save_data():
         max_iterations = 20 if DEBUG_MODE else len(df)
         
         try:
-            for i in range(max_iterations):
+            # Используем tqdm для отслеживания прогресса
+            for i in tqdm(range(max_iterations), desc="Processing items"):
                 # Получение данных для текущей строки
                 kod = df.loc[i, 'kod']
                 artikul = df.loc[i, 'artikul']
                 proizvoditel = df.loc[i, 'proizvoditel']
-                
-                # Вывод текущего прогресса
-                print(f"Processing item {i+1} of {max_iterations} - kod: {kod}, artikul: {artikul}, proizvoditel: {proizvoditel}")
                 
                 item = {
                     'resource_article': artikul,
