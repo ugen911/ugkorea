@@ -27,12 +27,13 @@ def snake_case(column_name):
 def prepare_data(data):
     # Convert columns to snake_case
     data.columns = [snake_case(col) for col in data.columns]
+    
     # Rename specific columns
     data.rename(columns={'polnoenaimenovanie': 'naimenovanie'}, inplace=True)
     
-    # Prepare nomenclature data
-    nomenklatura = data[['kod', 'naimenovanie', 'artikul', 'proizvoditel', 'edizm', 'pometkaudalenija']]
-    nomenklatura = nomenklatura[['kod', 'artikul', 'proizvoditel', 'naimenovanie', 'edizm', 'pometkaudalenija']]
+    # Prepare nomenclature data, including the 'stellazh' column
+    nomenklatura = data[['kod', 'naimenovanie', 'artikul', 'proizvoditel', 'edizm', 'pometkaudalenija', 'stellazh']]
+    nomenklatura = nomenklatura[['kod', 'artikul', 'proizvoditel', 'naimenovanie', 'edizm', 'stellazh', 'pometkaudalenija']]
     
     # Prepare stock data and convert to float
     stock = data[['kod', 'konost']].copy()

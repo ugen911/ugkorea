@@ -14,7 +14,7 @@ os.makedirs(output_dir, exist_ok=True)
 df_nomenklaturaold = pd.read_sql("SELECT kod, artikul, proizvoditel, naimenovanie, edizm FROM nomenklaturaold", engine)
 df_priceold = pd.read_sql("SELECT kod, tsenarozn FROM priceold", engine)
 df_stockold = pd.read_sql("SELECT kod, osnsklad FROM stockold", engine)
-df_photoadress = pd.read_sql("SELECT sku AS kod, adress FROM photoadress", engine)
+df_photoadress = pd.read_sql("SELECT kod, adress FROM photoadress", engine)
 df_nomenklaturaprimenjaemost = pd.read_sql("SELECT kod, model FROM nomenklaturaprimenjaemost", engine)
 
 # Обработка df_nomenklaturaprimenjaemost: группировка по kod и объединение model в строку через запятую
