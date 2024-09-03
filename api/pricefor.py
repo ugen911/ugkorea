@@ -4,7 +4,8 @@ import re
 
 def get_final_df():
     """
-    Функция для получения объединенного и отфильтрованного DataFrame из таблиц nomenklaturaold и stockold.
+    Функция для получения объединенного и отфильтрованного DataFrame из таблиц nomenklaturaold и stockold,
+    исключая строки с производителем Noname.
     """
     # Получаем объект подключения к базе данных
     engine = get_db_engine()
@@ -13,11 +14,12 @@ def get_final_df():
     nomenklaturaold_df = pd.read_sql_table('nomenklaturaold', engine)
     stockold_df = pd.read_sql_table('stockold', engine)
 
-    # Фильтруем строки, где pometkaudalenija имеет значение 'Нет' и proizvoditel не пустой
+    # Фильтруем строки, где pometkaudalenija имеет значение 'Нет', производитель не пустой и не равен 'Noname'
     nomenklaturaold_filtered = nomenklaturaold_df[
         (nomenklaturaold_df['pometkaudalenija'] == 'Нет') & 
         (nomenklaturaold_df['proizvoditel'].notna()) & 
-        (nomenklaturaold_df['proizvoditel'] != '')
+        (nomenklaturaold_df['proizvoditel'] != '') &
+        (nomenklaturaold_df['proizvoditel'] != 'Noname')
     ]
 
     # Преобразуем столбец osnsklad в тип данных float
