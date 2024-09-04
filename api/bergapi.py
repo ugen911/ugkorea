@@ -153,7 +153,7 @@ def process_and_save_data():
         engine = get_db_engine()
         
         # Загрузка датафрейма в базу данных в схему `prices` как таблицу `bergapi`
-        final_df.to_sql('bergapi', con=engine, schema='prices', if_exists='replace', index=False)
+        final_df.to_sql('bergapi', con=engine, schema='api', if_exists='replace', index=False)
         
         print("Dataframe saved to the database successfully.")
         
