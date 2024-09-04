@@ -261,7 +261,7 @@ def main(debug_mode=False):
             df = pd.DataFrame(all_product_details)
             df = df[['link', 'name', 'catalog_number', 'manufacturer', 'availability', 'stock', 'price']]
             engine = get_db_engine()
-            df.to_sql('autocoreec', engine, schema='prices', if_exists='replace', index=False)
+            df.to_sql('autocoreec', engine, schema='konkurents', if_exists='replace', index=False)
             logging.info('Детали продуктов сохранены в product_details.csv')
             print('Детали продуктов сохранены в autocoreec схема prices')
             print(df.head(20))
