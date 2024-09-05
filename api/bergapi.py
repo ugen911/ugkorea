@@ -2,7 +2,7 @@ import time
 import os
 import pandas as pd
 import requests
-from ugkorea.api.pricefor import get_final_df
+from ugkorea.api.bergbrandsid import get_price_with_brand_id as get_final_df
 from ugkorea.db.database import get_db_engine
 from ugkorea.api.config import BASE_URL_BERG, API_KEY_BERG
 from datetime import datetime
@@ -19,7 +19,8 @@ def process_and_save_data():
         params = {
             'key': API_KEY,
             'items[0][resource_article]': item['resource_article'],
-            'items[0][brand_name]': item['brand_name']
+            'items[0][brand_id]': item['brand_id'],
+            'analogs': 0  # Добавляем параметр analogs=0
         }
         
         try:
@@ -62,7 +63,6 @@ def process_and_save_data():
             os.makedirs('output')
         df.to_csv(filename, index=False)
 
-
     def remove_file(filename='output/partial_result.csv'):
         """Удаляет указанный файл."""
         if os.path.exists(filename):
@@ -80,7 +80,7 @@ def process_and_save_data():
         results = []
         
         # Определяем количество итераций в зависимости от режима отладки
-        max_iterations = 20 if DEBUG_MODE else len(df)
+        max_iterations = 100 if DEBUG_MODE else len(df)
         
         try:
             # Используем tqdm для отслеживания прогресса
@@ -88,31 +88,38 @@ def process_and_save_data():
                 # Получение данных для текущей строки
                 kod = df.loc[i, 'kod']
                 artikul = df.loc[i, 'artikul']
-                proizvoditel = df.loc[i, 'proizvoditel']
+                proizvoditel = df.loc[i, 'proizvoditel']  # Оставляем производителя из get_final_df
+                brand_id = df.loc[i, 'brand_id']  # Получаем brand_id
                 
                 item = {
                     'resource_article': artikul,
-                    'brand_name': proizvoditel
+                    'brand_id': brand_id
                 }
                 
                 # Получение данных по текущему элементу
                 stock_info = get_stock_info(item)
                 
                 if stock_info and 'resources' in stock_info and len(stock_info['resources']) > 0:
-                    offers = stock_info['resources'][0]['offers']
+                    resource = stock_info['resources'][0]
+                    brand = resource['brand']  # Получаем объект brand
+                    brand_name = brand['name']  # Получаем brand_name из brand['name']
                     
                     # Фильтруем предложения по условиям average_period <= 15 и reliability > 80
                     valid_offers = [
-                        offer for offer in offers 
+                        offer for offer in resource['offers'] 
                         if offer['average_period'] <= 15 and offer['reliability'] > 80
+                        and resource['brand']['id'] == brand_id  # Фильтрация по brand_id
                     ]
                     
                     if valid_offers:
+                        # Находим предложение с минимальной ценой
                         min_price_offer = min(valid_offers, key=lambda x: x['price'])
                         result = {
                             'kod': kod,
                             'artikul': artikul,
-                            'proizvoditel': proizvoditel,
+                            'proizvoditel': proizvoditel,  # Сохраняем производителя
+                            'brand_id': brand_id,  # Сохраняем brand_id
+                            'brand_name': brand_name,  # Сохраняем brand_name из ответа API
                             'warehouse_name': min_price_offer['warehouse']['name'],
                             'price': min_price_offer['price'],
                             'quantity': min_price_offer['quantity'],
@@ -141,13 +148,14 @@ def process_and_save_data():
         final_df['source'] = 'berg'
         final_df['date_checked'] = datetime.today().strftime('%Y-%m-%d')
         
-        # Проверяем на дубликаты по `kod` и оставляем строки с минимальной ценой больше 0
+        # Оставляем только строки с ценой > 0 и фильтруем по минимальной цене для каждого товара с правильным brand_id
         final_df = final_df[final_df['price'] > 0]
         final_df = final_df.loc[final_df.groupby('kod')['price'].idxmin()]
 
-        # Размещаем колонку `kod` слева всего датафрейма
-        final_df = final_df[['kod', 'artikul', 'proizvoditel', 'warehouse_name', 'price', 'quantity', 'average_period', 'reliability', 'source', 'date_checked']]
-        
+        # Размещаем колонки `kod`, `artikul`, `proizvoditel`, `brand_id` и `brand_name` рядом
+        final_df = final_df[['kod', 'artikul', 'proizvoditel', 'brand_id', 'brand_name', 
+                             'warehouse_name', 'price', 'quantity', 'average_period', 
+                             'reliability', 'source', 'date_checked']]
 
         # Получение движка для базы данных
         engine = get_db_engine()
