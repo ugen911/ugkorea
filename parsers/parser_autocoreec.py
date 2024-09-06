@@ -263,7 +263,7 @@ def main(debug_mode=False):
             engine = get_db_engine()
             df.to_sql('autocoreec', engine, schema='konkurents', if_exists='replace', index=False)
             logging.info('Детали продуктов сохранены в product_details.csv')
-            print('Детали продуктов сохранены в autocoreec схема api')
+            print('Детали продуктов сохранены в autocoreec схема konkurents')
             print(df.head(20))
         else:
             logging.info('Детали продуктов не были скрапированы.')
