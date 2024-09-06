@@ -8,6 +8,7 @@ import pandas as pd
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ugkorea.db.database import get_db_engine
+from tqdm import tqdm  
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -39,6 +40,8 @@ def setup_driver():
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-popup-blocking")
     chrome_options.add_argument("--log-level=3")
+    chrome_options.add_argument("--use-gl=swiftshader")
+    chrome_options.add_argument("--disable-webgl")
     chrome_options.binary_location = "C:/Program Files/Google/chrome.exe"  # Укажите путь к вашему Chrome
 
     # Формируем путь к chromedriver
@@ -249,12 +252,12 @@ def main(debug_mode=False):
         total_products = len(all_product_links)
         processed_products = 0
 
-        for product_link in all_product_links:
+        # Используем tqdm для отображения прогресса
+        for product_link in tqdm(all_product_links, desc="Обработка продуктов"):
             product_details = get_product_details(driver, product_link)
             if not all(value == 'N/A' for key, value in product_details.items() if key != 'link'):
                 all_product_details.append(product_details)
             processed_products += 1
-            print(f'Обработан продукт {processed_products} из {total_products}: {product_details}')
             logging.info(f'Скрапирован продукт: {product_details}')
             
         if all_product_details:
@@ -262,7 +265,7 @@ def main(debug_mode=False):
             df = df[['link', 'name', 'catalog_number', 'manufacturer', 'availability', 'stock', 'price']]
             engine = get_db_engine()
             df.to_sql('autocoreec', engine, schema='konkurents', if_exists='replace', index=False)
-            logging.info('Детали продуктов сохранены в product_details.csv')
+            logging.info('Детали продуктов сохранены в autocoreec схема konkurents')
             print('Детали продуктов сохранены в autocoreec схема konkurents')
             print(df.head(20))
         else:
