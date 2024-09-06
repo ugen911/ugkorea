@@ -12,6 +12,7 @@ python -m accessold.stockend
 python -m accessold.priceendmonth
 echo statistic for end of month ready
 python -m reglament_task.dromsend
+python -m otherpoint.bychinaevgeni
 
 rem Запись информации о выполнении в лог-файл
 echo Процедура %~nx0 выполнена в %date% %time% >> log.txt
