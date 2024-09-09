@@ -71,11 +71,14 @@ df_final['Описание'] = df_final['Наименование'] + "\n\n" + \
 xlsx_path = os.path.join(output_dir, 'Прайс_дром_обновленные_с_фото.xlsx')
 df_final.to_excel(xlsx_path, index=False)
 
-# Отправка Excel-файла по электронной почте
-to_email = 'UgKorea24-price-45877-1cb81c3ae5a3@baza.farpost.ru'
+# Объявляем список адресов электронной почты
+to_emails = [
+    'UgKorea24-price-45877-1cb81c3ae5a3@baza.farpost.ru'
+]
 subject = 'Прайс Дром Обновленные с Фото'
 body = 'Во вложении обновленный прайс с фото.'
 attachment_name = 'Прайс_дром_обновленные_с_фото.xlsx'
 
-send_email_via_mailru(to_email, subject, body, xlsx_path, attachment_name)
-
+# Цикл по списку адресов электронной почты
+for to_email in to_emails:
+    send_email_via_mailru(to_email, subject, body, xlsx_path, attachment_name)
