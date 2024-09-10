@@ -1,3 +1,5 @@
+###Скрипт создает файл для переоценки из BERG API \Файлы для работы Access\Прайсы для переоценки\ПроценкаОбщая.xlsx'
+
 import os
 import pandas as pd
 from ugkorea.db.database import get_db_engine
