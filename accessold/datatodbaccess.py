@@ -1,10 +1,6 @@
-### Скрипт для переноса данных из папки в базу данных для тестирования или переноса, сделан для ноутбука
-
-
-
 import os
 import pandas as pd
-from sqlalchemy import MetaData, Table, Column, String
+from sqlalchemy import MetaData, Table
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import inspect
@@ -56,8 +52,8 @@ else:
                 # Убираем расширение из имени файла, чтобы использовать его как имя таблицы
                 table_name = os.path.splitext(file)[0]
 
-                # Преобразуем имена колонок в DataFrame в строковый тип, чтобы они оставались как есть
-                columns = [Column(col, String) for col in df.columns]
+                # Преобразование строк "ИСТИНА" и "ЛОЖЬ" в булевы значения True и False
+                df = df.replace({'ИСТИНА': True, 'ЛОЖЬ': False})
 
                 # Проверяем, существует ли таблица
                 if inspector.has_table(table_name, schema='access'):
@@ -65,17 +61,9 @@ else:
                     table = Table(table_name, metadata, autoload_with=engine)
                     table.drop(engine)
 
-                # Создаем таблицу с оригинальными именами колонок в схеме access
-                table = Table(table_name, metadata, *columns)
-                print(f"Создаем таблицу {table_name}...")
-                table.create(engine)
-                print(f"Таблица {table_name} успешно создана.")
-
-                # Логируем информацию о структуре DataFrame перед загрузкой
+                # Создаем таблицу автоматически с распознаванием типов данных
                 print(f"Загружаем данные в таблицу {table_name}...")
-                print(f"Структура данных: {df.info()}")
-                print(f"Пример данных: \n{df.head()}")
-
+                
                 # Попробуем загрузить данные порциями, если DataFrame большой
                 chunk_size = 500  # Размер порции данных
                 total_rows = len(df)
