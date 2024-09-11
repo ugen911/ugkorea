@@ -1,44 +1,110 @@
-from sqlalchemy import MetaData, Table, Column, text
-from sqlalchemy.schema import CreateTable, DropTable
+import os
+import pandas as pd
+from sqlalchemy import MetaData, Table, Column, String, Boolean, Integer, Numeric
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import inspect
 from ugkorea.db.database import get_db_engine
 
-# Получаем движок базы данных
+# Подключаем движок базы данных
 engine = get_db_engine()
 
-# Функция для клонирования колонок
-def clone_columns(table):
-    return [Column(col.name, col.type, primary_key=col.primary_key, nullable=col.nullable, default=col.default)
-            for col in table.columns]
+# Устанавливаем сессию для работы с базой данных
+Session = sessionmaker(bind=engine)
+session = Session()
 
-# Подключаемся к базе данных
-with engine.connect() as connection:
-    # Загружаем метаданные схемы 'prices'
-    meta_prices = MetaData(schema='prices')
-    meta_prices.reflect(bind=connection)
-    
-    # Загружаем таблицу bergapi из схемы prices
-    bergapi_table = Table('bergapi', meta_prices, autoload_with=connection)
+# Создаем объект MetaData для схемы access
+metadata = MetaData(schema='access')
 
-    # Загружаем метаданные схемы 'api'
-    meta_api = MetaData(schema='api')
+# Инициализируем инспектор для проверки наличия таблиц
+inspector = inspect(engine)
 
-    # Клонируем колонки из оригинальной таблицы
-    bergapi_columns = clone_columns(bergapi_table)
+# Указываем локальный путь к файлу Excel
+file_path = r'C:\Users\evgen\OneDrive\Documents\Access\Номенклатура 1С.xlsx'
 
-    # Создаем таблицу bergapi в схеме api с клонированными колонками
-    bergapi_table_api = Table('bergapi', meta_api, *bergapi_columns)
-    
-    # Создаем таблицу в схеме api
-    connection.execute(CreateTable(bergapi_table_api))
+# Проверяем, существует ли путь
+if not os.path.exists(file_path):
+    print(f"Файл {file_path} не существует.")
+else:
+    try:
+        # Читаем файл Excel
+        print(f"Чтение файла: {file_path}")
+        df = pd.read_excel(file_path, sheet_name=0)  # sheet_name=0 для первого листа
 
-    # Копируем данные из схемы 'prices' в схему 'api'
-    copy_query = text("""
-        INSERT INTO api.bergapi
-        SELECT * FROM prices.bergapi
-    """)
-    connection.execute(copy_query)
-    
-    # Удаляем таблицу bergapi из схемы prices
-    connection.execute(DropTable(bergapi_table))
-    
-    print("Таблица перенесена и удалена из схемы 'prices'.")
+        if df.empty:
+            print(f"Файл {file_path} пустой, завершаем обработку.")
+        else:
+            # Преобразование строк "ИСТИНА" и "ЛОЖЬ" в булевы значения True и False
+            df = df.replace({'ИСТИНА': True, 'ЛОЖЬ': False})
+
+            # Имя таблицы
+            table_name = 'Номенклатура_1С'
+
+            # Проверяем, существует ли таблица
+            if inspector.has_table(table_name, schema='access'):
+                print(f"Таблица {table_name} существует, удаляем её...")
+                table = Table(table_name, metadata, autoload_with=engine)
+                table.drop(engine)
+
+            # Определение таблицы с правильными типами данных на основе скриншота
+            table = Table(
+                table_name, metadata,
+                Column('ЦБ', String(255)),
+                Column('Оригинальный артикул', String(255)),
+                Column('Артикул', String(255)),
+                Column('Стеллаж', String(255)),
+                Column('Наименование', String(255)),
+                Column('Производитель', String(255)),
+                Column('"Еденица измерения"', String(255)),  # Оставляем как "Еденица измерения" в кавычках
+                Column('Розничная цена', Numeric),
+                Column('Закуп 1С', Numeric),
+                Column('Не используется в заказе', Boolean),
+                Column('Неликвид', Boolean),
+                Column('Помечено на удаление', Boolean),
+                Column('Новая позиция (менее 6мес)', Boolean),
+                Column('Только в Корее', Boolean),
+                Column('Можно в РФ', Boolean),
+                Column('Зафиксировать минималки', Boolean),
+                Column('Категория ABC', String(255)),
+                Column('Категория XYZ', String(255)),
+                Column('Остаток', Integer),
+                Column('Минималка местная', Integer),
+                Column('Минималка Корея', Integer),
+                Column('Корейский закуп последний', Numeric),
+                Column('Сделаны фото', Boolean),
+                Column('Счетчик', Integer),
+                Column('Б/У', String(255)),
+                Column('ОстатокЗаказы', Integer),
+                Column('Лист Ожидания', Boolean),
+                extend_existing=True,  # Применение extend_existing на уровне таблицы
+                schema='access'
+            )
+
+            # Создаем таблицу
+            metadata.create_all(engine)
+            print(f"Таблица {table_name} создана.")
+
+            # Проверьте, что название колонки "Еденица измерения" соответствует в DataFrame
+            df.columns = [col if col != 'Еденица измерения' else '"Еденица измерения"' for col in df.columns]
+
+            # Загрузка данных порциями
+            chunk_size = 500  # Размер порции данных
+            total_rows = len(df)
+            print(f"Загрузка данных порциями, всего строк: {total_rows}, размер порции: {chunk_size}")
+
+            for i, chunk in enumerate(range(0, total_rows, chunk_size)):
+                df_chunk = df.iloc[chunk:chunk + chunk_size]
+                print(f"Загружаем порцию {i + 1}, строки с {chunk} по {chunk + len(df_chunk)}...")
+                df_chunk.to_sql(table_name, con=engine, schema='access', if_exists='append', index=False)
+                print(f"Порция {i + 1} загружена успешно.")
+
+            print(f"Данные успешно загружены в таблицу {table_name}.")
+
+    except SQLAlchemyError as e:
+        print(f"Ошибка при работе с таблицей {table_name}: {str(e)}")
+    except Exception as e:
+        print(f"Общая ошибка при обработке файла {file_path}: {str(e)}")
+
+# Закрываем сессию
+session.close()
+print("Обработка завершена.")

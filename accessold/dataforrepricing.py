@@ -1,66 +1,88 @@
-###Скрипт создает файл для переоценки из BERG API \Файлы для работы Access\Прайсы для переоценки\ПроценкаОбщая.xlsx'
-
 import os
 import pandas as pd
+from sqlalchemy import MetaData, Table
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import inspect
 from ugkorea.db.database import get_db_engine
 
-# Получаем движок базы данных
+# Подключаем движок базы данных
 engine = get_db_engine()
 
-# SQL запрос для выборки всех строк из таблицы bergapi в схеме prices
-query = 'SELECT * FROM api.bergapi;'
+# Устанавливаем сессию для работы с базой данных
+Session = sessionmaker(bind=engine)
+session = Session()
 
-# Выполнение запроса и загрузка данных в DataFrame
-df = pd.read_sql(query, engine)
+# Создаем объект MetaData для схемы access
+metadata = MetaData(schema='access')
 
-# Создаем новую таблицу в требуемом формате
-df_final = pd.DataFrame({
-    'НомерСтрокиПоиска': range(1, len(df) + 1),  # Нумерация строк
-    'БрендПоиска': df['proizvoditel'],  # Данные из kolumny 'proizvoditel'
-    'АртикулПоиска': df['artikul'],  # Данные из kolumny 'artikul'
-    'НаименованиеПоиска': df['kod'],  # Данные из kolumny 'kod'
-    'Потребность': 1,  # Везде 1
-    'Поставщик': 'BERG',  # Везде BERG
-    'Бренд': df['proizvoditel'],  # Данные из kolumny 'proizvoditel'
-    'Артикул': df['artikul'],  # Данные из kolumny 'artikul'
-    'АртикулПоставщика': df['artikul'],  # Данные из kolumny 'artikul'
-    'Наименование': 'Деталь',  # Везде указать "Деталь"
-    'Состояние': 'Заказ',  # Везде указать "Заказ"
-    'Срок': df['average_period'].astype(str) + ' дн.',  # К каждому числу добавить " дн."
-    'Склад': 'Партнерский склад',  # Везде указать "Партнерский склад"
-    'СкладПоставщика': df['warehouse_name'],  # Данные из kolumny 'warehouse_name'
-    'Наличие': df['quantity'].astype(str) + ' шт.',  # Данные из 'quantity' + " шт."
-    'КОформлению': 0,  # Везде указать 0
-    'ЦенаЗначение': df['price'],  # Данные из kolumny 'price'
-    'ЦенаПродажи': 0,  # Везде указать 0
-    'ЦенаВалюта': 'р.',  # Везде указать "р."
-    'ДопИнфо': df['reliability'].astype(str) + '% - вероятность поставки'  # Данные из 'reliability' + " % - вероятность поставки"
-})
+# Инициализируем инспектор для проверки наличия таблиц
+inspector = inspect(engine)
 
-# Попытка сохранить в первую директорию
-first_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\Прайсы для переоценки\ПроценкаОбщая.xlsx'
-second_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\Прайсы для переоценки\ПроценкаОбщая.xlsx'
+# Указываем локальный путь к папке, где находятся файлы Excel
+folder_path = r'C:\Users\evgen\OneDrive\Documents\Access'
 
-# Определяем путь для сохранения
-save_path = first_path if os.path.exists(os.path.dirname(first_path)) else second_path
+# Проверяем, существует ли путь
+if not os.path.exists(folder_path):
+    print(f"Указанный путь {folder_path} не существует.")
+else:
+    # Получаем список всех файлов Excel в папке
+    excel_files = [f for f in os.listdir(folder_path) if f.endswith('.xlsx')]
+    
+    if len(excel_files) == 0:
+        print(f"В директории {folder_path} не найдено файлов .xlsx.")
+    else:
+        print(f"Найдено файлов: {len(excel_files)}")
 
-# Функция для сохранения файла
-def save_excel(path):
-    with pd.ExcelWriter(path, engine='xlsxwriter') as writer:
-        df_final.to_excel(writer, sheet_name='Проценка_230213_155510', index=False)
-        # Удаляем все остальные листы кроме указанного
-        if 'Sheet1' in writer.book.sheetnames:
-            writer.book.remove(writer.book['Sheet1'])
+        # Проходим по каждому файлу и загружаем данные в базу
+        for file in excel_files:
+            file_path = os.path.join(folder_path, file)
+            
+            print(f"Обработка файла: {file_path}")
+            
+            try:
+                # Читаем первый лист файла Excel
+                print(f"Чтение файла: {file_path}")
+                df = pd.read_excel(file_path, sheet_name=0)  # sheet_name=0 для первого листа
+                
+                if df.empty:
+                    print(f"Файл {file_path} пустой, пропускаем.")
+                    continue
 
-# Попытка сохранения файла
-try:
-    save_excel(save_path)
-    print(f"Файл успешно сохранен по пути: {save_path}")
-except PermissionError:
-    # При ошибке пробуем сохранить файл с другим именем
-    alternative_path = os.path.join(os.path.dirname(save_path), 'ПроценкаОбщая1.xlsx')
-    try:
-        save_excel(alternative_path)
-        print(f"Файл был сохранен с другим именем по пути: {alternative_path}")
-    except Exception as e:
-        print(f"Ошибка при сохранении файла: {e}")
+                # Убираем расширение из имени файла, чтобы использовать его как имя таблицы
+                table_name = os.path.splitext(file)[0]
+
+                # Преобразование строк "ИСТИНА" и "ЛОЖЬ" в булевы значения True и False
+                df = df.replace({'ИСТИНА': True, 'ЛОЖЬ': False})
+
+                # Проверяем, существует ли таблица
+                if inspector.has_table(table_name, schema='access'):
+                    print(f"Таблица {table_name} существует, удаляем её...")
+                    table = Table(table_name, metadata, autoload_with=engine)
+                    table.drop(engine)
+
+                # Создаем таблицу автоматически с распознаванием типов данных
+                print(f"Загружаем данные в таблицу {table_name}...")
+                
+                # Попробуем загрузить данные порциями, если DataFrame большой
+                chunk_size = 500  # Размер порции данных
+                total_rows = len(df)
+                print(f"Загрузка данных порциями, всего строк: {total_rows}, размер порции: {chunk_size}")
+
+                # Разделение загрузки на порции
+                for i, chunk in enumerate(range(0, total_rows, chunk_size)):
+                    df_chunk = df.iloc[chunk:chunk + chunk_size]
+                    print(f"Загружаем порцию {i + 1}, строки с {chunk} по {chunk + len(df_chunk)}...")
+                    df_chunk.to_sql(table_name, con=engine, schema='access', if_exists='append', index=False)
+                    print(f"Порция {i + 1} загружена успешно.")
+
+                print(f"Данные успешно загружены в таблицу {table_name}.")
+
+            except SQLAlchemyError as e:
+                print(f"Ошибка при работе с таблицей {table_name}: {str(e)}")
+            except Exception as e:
+                print(f"Общая ошибка при обработке файла {file}: {str(e)}")
+
+# Закрываем сессию
+session.close()
+print("Обработка завершена.")
