@@ -14,7 +14,7 @@ def send_email_via_mailru(to_email, subject, body, attachment_path=None):
 
     # Создаем объект MIMEMultipart
     msg = MIMEMultipart()
-    msg['From'] = formataddr(('Your Name', from_email))  # Можно указать имя отправителя
+    msg['From'] = from_email
     msg['To'] = to_email
     msg['Subject'] = subject
     msg['Cc'] = from_email  # Добавляем копию самому себе
@@ -48,15 +48,10 @@ def send_email_via_mailru(to_email, subject, body, attachment_path=None):
             msg.attach(part)
 
     # Устанавливаем соединение с сервером и отправляем письмо
-    try:
-        server = smtplib.SMTP_SSL('smtp.mail.ru', 465)
-        server.login(from_email, from_password)
-        text = msg.as_string()
-        server.sendmail(from_email, [to_email, from_email], text)  # Отправляем письмо и получателю, и себе
-        print(f"Email sent to {to_email} with attachment {attachment_name}, and cc to {from_email}")
-    except Exception as e:
-        print(f"Failed to send email: {str(e)}")
-    finally:
-        server.quit()
+    server = smtplib.SMTP_SSL('smtp.mail.ru', 465)
+    server.login(from_email, from_password)
+    text = msg.as_string()
+    server.sendmail(from_email, [to_email, from_email], text)  # Отправляем письмо и получателю, и себе
+    server.quit()
 
     print(f"Email отправлен на {to_email} с вложением {attachment_name}, и копия на {from_email}")
