@@ -77,8 +77,7 @@ to_emails = [
 ]
 subject = 'Прайс Дром Обновленные с Фото'
 body = 'Во вложении обновленный прайс с фото.'
-attachment_name = 'Прайс_дром_обновленные_с_фото.xlsx'
 
 # Цикл по списку адресов электронной почты
 for to_email in to_emails:
-    send_email_via_mailru(to_email, subject, body, xlsx_path, attachment_name)
+    send_email_via_mailru(to_email, subject, body, xlsx_path)
