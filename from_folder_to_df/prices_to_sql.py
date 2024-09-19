@@ -35,7 +35,6 @@ def check_table_exists(connection, schema, table_name):
 
 # Импорт и добавление данных в базу
 def import_and_load_data():
-    sys.path.append(r"C:\Users\evgen\repo\ugkorea")
     dataframes_dict = get_df_main(folder_path)
     engine = get_db_engine()
 
