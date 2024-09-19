@@ -42,15 +42,16 @@ def filter_by_date(df):
     # Проверяем наличие колонки "дата" в датафрейме
     if 'дата' in df.columns:
         try:
-            # Преобразуем значение 'дата' в формат datetime
+            # Преобразуем значение 'дата' в формат datetime, если это не было сделано ранее
             df['дата'] = pd.to_datetime(df['дата'])
-            # Определяем сегодняшнюю дату
-            today = datetime.now().date()
+            # Определяем сегодняшнюю дату и приводим к типу datetime для корректного сравнения
+            today = pd.to_datetime(datetime.now().date())
             # Оставляем только строки, где разница между датой и сегодняшней датой меньше или равна 4 дням
             df = df[df['дата'] >= today - timedelta(days=4)]
         except Exception as e:
             print(f"Error occurred while filtering by date: {e}")
     return df
+
 
 
 # Создание пустого словаря для хранения переименованных датафреймов
