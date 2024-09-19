@@ -1,13 +1,31 @@
 import os
 import pandas as pd
-from datetime import datetime
 import zipfile
 import tempfile
 import warnings
+import chardet
+from ugkorea.from_folder_to_df.configs import configs
 
 warnings.filterwarnings("ignore", message="Workbook contains no default style, apply openpyxl's default")
 
-folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
+
+def find_repo_folder(start_path, folder_structure):
+    """Рекурсивный поиск папки с указанной структурой."""
+    for root, dirs, files in os.walk(start_path):
+        # Создаём полный путь для проверки
+        full_path = os.path.join(root, folder_structure)
+        if os.path.isdir(full_path):
+            return full_path
+    return None
+
+
+# Задаём структуру папок для поиска
+target_folder_structure = "repo\\ugkorea\\Output"
+    
+# Начинаем поиск с диска C:
+folder_path = find_repo_folder("C:\\", target_folder_structure)
+    
+###folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
 
 def add_columns_to_df(df, name):
     # Добавление колонки с текущей датой
@@ -32,9 +50,16 @@ def read_excel_file(file_path):
         print(f"Не удалось найти заголовки в файле: {file_path}")
         return None
 
+def detect_encoding(file_path):
+    with open(file_path, 'rb') as file:
+        raw_data = file.read(10000)  # Читаем часть файла для анализа
+        result = chardet.detect(raw_data)
+        return result['encoding']
+
 def read_csv_file(file_path):
     try:
-        return pd.read_csv(file_path, sep=';', encoding='utf-8')
+        encoding = detect_encoding(file_path)
+        return pd.read_csv(file_path, sep=';', encoding=encoding)
     except Exception as e:
         print(f"Ошибка при чтении файла CSV: {e}")
         return None
@@ -49,8 +74,12 @@ def standardize_dataframe_name(file_name):
         return 'shatepodolsk'
     elif 'FAVORIT' in base_name:
         return 'favorit'
-    elif 'FORUM' in base_name:
-        return 'forumcenter' if 'CENTER' in base_name else 'forumnvs'
+    elif 'FORUM' and 'CENTER' in base_name:
+        return 'forumcenter'
+    elif 'FORUM' and 'NVS' in base_name:
+        return 'forumnvs'
+    elif 'FORUM' and 'KRNK' in base_name:
+        return 'forumkrsk'
     elif 'TISS' in base_name:
         return 'tiss'
     return base_name.lower()
@@ -60,7 +89,7 @@ def process_dataframe(df, name):
         df.columns = df.iloc[4]
         df.drop(index=4, inplace=True)
         df.dropna(axis=1, how='all', inplace=True)
-    elif name in ['forumcenter', 'forumnvs']:
+    elif name in ['forumcenter', 'forumnvs', 'forumkrsk']:
         df.columns = df.iloc[1]
         df.drop(index=1, inplace=True)
     df.dropna(axis=1, how='all', inplace=True)
@@ -141,87 +170,7 @@ def process_dataframe(df, config):
     return df
 
 # Конфигурация для каждого датафрейма
-configs = {
-    'berg': {
-        'rename_columns': {
-            'Артикул': 'артикул', 'Наименование': 'наименование',
-            'Бренд': 'производитель', 'Склад': 'склад',
-            'Количество': 'количество', 'Цена руб': 'цена'
-        },
-        'column_order': ['артикул', 'наименование', 'производитель', 'склад', 'количество', 'цена'],
-        'convert_types': {'цена': float, 'количество': int},
-        'replace_values': {'цена': [(',', '.')]}
-    },
-    'shateekat': {
-        'rename_columns': {
-            'Бренд': 'производитель', 'Каталожный номер': 'артикул',
-            'Описание': 'наименование', 'Остаток': 'количество', 'Цена': 'цена'
-        },
-        'column_order': ['артикул', 'наименование', 'производитель', 'количество', 'цена'],
-        'convert_types': {'цена': float, 'количество': int},
-        'replace_values': {'количество': [('>', '')]}
-    },
-    'shatepodolsk': {
-        'rename_columns': {
-            'Бренд': 'производитель', 'Каталожный номер': 'артикул',
-            'Описание': 'наименование', 'Остаток': 'количество', 'Цена': 'цена'
-        },
-        'column_order': ['артикул', 'наименование', 'производитель', 'количество', 'цена'],
-        'convert_types': {'цена': float, 'количество': int},
-        'replace_values': {'количество': [('>', '')]}
-    },
-    'favorit': {
-        'rename_columns': {
-            'Производитель': 'производитель', 'Номер по каталогу': 'артикул',
-            'Наименование': 'наименование', 'Цена по договору': 'цена', 'Количество': 'количество'
-        },
-        'column_order': ['артикул', 'наименование', 'производитель', 'цена', 'количество'],
-        'convert_types': {'цена': float, 'количество': int}
-    },
-    'forumcenter': {
-        'rename_columns': {
-            'ГРУППА': 'производитель', '№ ПРОИЗВ.': 'артикул',
-            'НАИМЕНОВАНИЕ': 'наименование', 'ЦЕНА, РУБ': 'цена', 'НАЛичие': 'количество'
-        },
-        'column_order': ['производитель', 'артикул', 'наименование', 'цена', 'количество'],
-        'convert_types': {'цена': float, 'количество': int}
-    },
-    'forumnvs': {
-        'rename_columns': {
-            'ГРУППА': 'производитель', '№ ПРОИЗВ.': 'артикул',
-            'НАИМЕНОВАНИЕ': 'наименование', 'ЦЕНА, РУБ': 'цена', 'НАЛичие': 'количество'
-        },
-        'column_order': ['производитель', 'артикул', 'наименование', 'цена', 'количество'],
-        'convert_types': {'цена': float, 'количество': int}
-    },
-    'tiss': {
-        'rename_columns': {
-            'Бренд': 'производитель', 'Наименование товаров': 'наименование',
-            'Катал. номер': 'артикул', 'ОПТ': 'цена', 'Кол-во всего': 'количество'
-        },
-        'column_order': ['производитель', 'наименование', 'артикул', 'цена', 'количество'],
-        'convert_types': {'цена': float, 'количество': int},
-        'replace_values': {'цена': [(',', '.')]}
-    }
-}
-
-#Создайте словарь для хранения датафреймов
-#dataframes = {}
-
-# В цикле, где вы обрабатываете и добавляете колонки:
-# for name, config in configs.items():
-#     if name in globals():
-#         df = globals()[name]
-#         processed_df = process_dataframe(df, config)
-#         df_with_new_columns = add_columns_to_df(processed_df, name)
-#         dataframes[name] = df_with_new_columns
-#         print(name)
-#         print(df_with_new_columns.head())
-#     else:
-#         print(f"DataFrame '{name}' is not defined.")
-
-
-# dataframes_dict = dataframes
+configs = configs
 
 def get_df_main(folder_path=folder_path):
     # Создаем словарь для хранения датафреймов
