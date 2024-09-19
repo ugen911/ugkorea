@@ -4,6 +4,7 @@ call venv\Scripts\activate
 
 python -m api.bergapi
 python -m accessold.dataforrepricing
+python -m from_folder_to_df.create_files_to_access
 echo bergapi completed.
 
 rem Запись информации о выполнении в лог-файл

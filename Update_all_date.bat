@@ -13,6 +13,8 @@ python -m accessold.priceendmonth
 echo statistic for end of month ready
 python -m reglament_task.dromsend
 python -m otherpoint.bychinaevgeni
+python -m from_folder_to_df.mailru_utils
+python -m from_folder_to_df.prices_to_sql
 
 rem Запись информации о выполнении в лог-файл
 echo Процедура %~nx0 выполнена в %date% %time% >> log.txt
