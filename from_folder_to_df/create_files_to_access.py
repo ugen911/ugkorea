@@ -127,16 +127,38 @@ for table, df in renamed_and_formatted_dataframes.items():
     print("\n")
 
 
-# Путь к папке для сохранения файлов
-output_folder = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\Прайсы для переоценки'
+# Путь к локальной папке
+local_folder = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\Прайсы для переоценки'
+# Путь к сетевой папке
+network_folder = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\Прайсы для переоценки'
 
-# Цикл по каждому датафрейму в словаре renamed_and_formatted_dataframes
-for table, df in renamed_and_formatted_dataframes.items():
-    # Формирование пути к файлу
-    file_name = f"{table}.xlsx"
-    file_path = os.path.join(output_folder, file_name)
+# Проверка доступности локальной папки
+if os.path.exists(local_folder):
+    output_folder = local_folder
+    print(f"Локальная папка доступна: {output_folder}")
+else:
+    # Если локальная папка недоступна, проверяем сетевую папку
+    try:
+        # Попытка проверить доступность сетевой папки
+        if os.path.exists(network_folder):
+            output_folder = network_folder
+            print(f"Сетевая папка доступна: {output_folder}")
+        else:
+            raise FileNotFoundError(f"Ни локальная, ни сетевая папки не найдены.")
+    except Exception as e:
+        print(f"Ошибка при доступе к сетевой папке: {e}")
+        output_folder = None
 
-    # Сохранение датафрейма в файл Excel с кодировкой windows-1251
-    df.to_excel(file_path, index=False)
+if output_folder:
+    # Цикл по каждому датафрейму в словаре renamed_and_formatted_dataframes
+    for table, df in renamed_and_formatted_dataframes.items():
+        # Формирование пути к файлу
+        file_name = f"{table}.xlsx"
+        file_path = os.path.join(output_folder, file_name)
 
-    print(f"Создан файл '{file_name}' в папке '{output_folder}'")
+        # Сохранение датафрейма в файл Excel с кодировкой windows-1251
+        df.to_excel(file_path, index=False)
+
+        print(f"Создан файл '{file_name}' в папке '{output_folder}'")
+else:
+    print("Нет доступных папок для сохранения файлов.")
