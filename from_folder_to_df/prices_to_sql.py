@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 import sys
 import subprocess
 from sqlalchemy import text
@@ -92,8 +93,20 @@ def import_and_load_data():
             print(f"Ошибка при работе с базой данных: {e}")
             connection.rollback()  # Откат изменений в случае ошибки
 
+def clean_output_folder(folder_path):
+    """Очистка папки от файлов."""
+    for file in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, file)
+        try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+        except Exception as e:
+            print(f"Не удалось удалить {file_path}: {e}")
+
+
 def main():
     import_and_load_data()
+    clean_output_folder(folder_path=folder_path)
 
 if __name__ == "__main__":
     main()
