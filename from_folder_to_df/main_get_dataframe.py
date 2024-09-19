@@ -158,6 +158,7 @@ def process_dataframe(df, config):
     
     df = df[config['column_order']]
     
+    # Преобразование типов данных
     for column, dtype in config['convert_types'].items():
         try:
             if pd.api.types.is_string_dtype(df[column]):

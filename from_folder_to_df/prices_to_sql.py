@@ -2,11 +2,15 @@
 import pandas as pd
 import sys
 import subprocess
-from ugkorea.from_folder_to_df.main_get_dataframe import get_df_main
+from ugkorea.from_folder_to_df.main_get_dataframe import get_df_main, find_repo_folder
 from ugkorea.db.database import get_db_engine
 
 
-folder_path = r"C:\Users\evgen\repo\ugkorea\Output"
+# Задаём структуру папок для поиска
+target_folder_structure = "repo\\ugkorea\\Output"
+    
+# Начинаем поиск с диска C:
+folder_path = find_repo_folder("C:\\", target_folder_structure)
 
 # Выполнение внешнего скрипта
 def run_external_script(file_path):
@@ -51,7 +55,6 @@ def import_and_load_data():
             connection.rollback()  # Откат изменений в случае ошибки
 
 def main():
-    get_db_engine()
     #outlook_utile() #Убрано из-за того что сначала выполнялся import_and_load_data в bat, вероятно связано с многопоточностью win32.client
     import_and_load_data()
 
