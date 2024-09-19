@@ -1,9 +1,10 @@
 import pandas as pd
 import sys
 import subprocess
-from sqlalchemy import text  # Импортируем text для выполнения сырого SQL
+from sqlalchemy import text
 from ugkorea.from_folder_to_df.main_get_dataframe import get_df_main, find_repo_folder
 from ugkorea.db.database import get_db_engine
+from datetime import datetime, timedelta
 
 
 # Задаём структуру папок для поиска
@@ -33,6 +34,21 @@ def check_table_exists(connection, schema, table_name):
     result = connection.execute(query, {'schema': schema, 'table_name': table_name})
     return result.scalar()
 
+# Удаление данных старше 60 дней
+def delete_old_data(connection, full_table_name):
+    # Вычисляем дату 60 дней назад от текущей даты
+    cutoff_date = (datetime.now() - timedelta(days=60)).date()
+    
+    # Выполняем запрос на удаление данных, где дата меньше чем 60 дней назад
+    delete_query = text(f"""
+        DELETE FROM {full_table_name}
+        WHERE TO_DATE(дата, 'YYYY-MM-DD') < :cutoff_date;
+    """)
+    
+    # Выполняем запрос на удаление старых данных
+    connection.execute(delete_query, {'cutoff_date': cutoff_date})
+    print(f"Удалены данные старше {cutoff_date} из таблицы {full_table_name}.")
+
 # Импорт и добавление данных в базу
 def import_and_load_data():
     dataframes_dict = get_df_main(folder_path)
@@ -55,6 +71,9 @@ def import_and_load_data():
                     print(f"Таблица {full_table_name} успешно создана и данные добавлены.")
                     continue
 
+                # Удаляем данные старше 60 дней
+                delete_old_data(connection, full_table_name)
+
                 # Получаем существующие даты
                 existing_dates = pd.read_sql(f"SELECT DISTINCT дата FROM {full_table_name}", connection)['дата']
                 df_filtered = df[~df['дата'].isin(existing_dates)]
@@ -74,7 +93,6 @@ def import_and_load_data():
             connection.rollback()  # Откат изменений в случае ошибки
 
 def main():
-    #outlook_utile() #Убрано из-за того что сначала выполнялся import_and_load_data в bat, вероятно связано с многопоточностью win32.client
     import_and_load_data()
 
 if __name__ == "__main__":
