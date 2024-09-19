@@ -1,14 +1,14 @@
-
 import pandas as pd
 import sys
 import subprocess
+from sqlalchemy import text  # Импортируем text для выполнения сырого SQL
 from ugkorea.from_folder_to_df.main_get_dataframe import get_df_main, find_repo_folder
 from ugkorea.db.database import get_db_engine
 
 
 # Задаём структуру папок для поиска
 target_folder_structure = "repo\\ugkorea\\Output"
-    
+
 # Начинаем поиск с диска C:
 folder_path = find_repo_folder("C:\\", target_folder_structure)
 
@@ -21,6 +21,17 @@ def run_external_script(file_path):
         print("Файл не найден.")
     except subprocess.CalledProcessError as e:
         print(f"Ошибка выполнения скрипта {file_path}: {e}")
+
+# Проверка наличия таблицы в базе данных
+def check_table_exists(connection, schema, table_name):
+    query = text(f"""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = :schema AND table_name = :table_name
+        );
+    """)
+    result = connection.execute(query, {'schema': schema, 'table_name': table_name})
+    return result.scalar()
 
 # Импорт и добавление данных в базу
 def import_and_load_data():
@@ -37,6 +48,15 @@ def import_and_load_data():
                     continue
 
                 full_table_name = f"prices.{table_name}"  # Использование схемы 'prices'
+                
+                # Проверяем наличие таблицы
+                if not check_table_exists(connection, 'prices', table_name):
+                    print(f"Таблица {full_table_name} не существует. Создаю новую таблицу.")
+                    df.to_sql(table_name, connection, schema='prices', if_exists='replace', index=False)
+                    print(f"Таблица {full_table_name} успешно создана и данные добавлены.")
+                    continue
+
+                # Получаем существующие даты
                 existing_dates = pd.read_sql(f"SELECT DISTINCT дата FROM {full_table_name}", connection)['дата']
                 df_filtered = df[~df['дата'].isin(existing_dates)]
 
