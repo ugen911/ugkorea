@@ -8,8 +8,14 @@ from ugkorea.mail.config import email, password
 email_user = email
 email_pass = password
 
-# Функция для удаления писем старше 10 дней с отладочными выводами
-def delete_old_emails(email_user, email_pass, folder="inbox", days=5):
+# Словарь для отображения пользовательских имен папок
+folder_names = {
+    "inbox": "Входящие",
+    "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-": "Исходящие"
+}
+
+# Функция для удаления писем старше определённого количества дней с отладочными выводами
+def delete_old_emails(email_user, email_pass, folders=["inbox", "&BB4EQgQ,BEAEMAQyBDsENQQ9BD0ESwQ1-"], days=30):
     try:
         # Подключение к почтовому серверу
         print("Подключение к почтовому серверу...")
@@ -17,36 +23,42 @@ def delete_old_emails(email_user, email_pass, folder="inbox", days=5):
         mail.login(email_user, email_pass)
         print("Успешное подключение к почтовому серверу.")
 
-        # Выбор папки (входящие письма)
-        mail.select(folder)
-        print(f"Выбрана папка '{folder}'.")
-
-        # Получаем дату для сравнения (сегодня минус 10 дней)
+        # Получаем дату для сравнения (сегодня минус N дней)
         date_cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime("%d-%b-%Y")
         print(f"Ищем письма старше {days} дней (до {date_cutoff}).")
 
-        # Поиск писем старше 10 дней
-        result, data = mail.search(None, f'BEFORE {date_cutoff}')
+        # Проход по каждой указанной папке
+        for folder in folders:
+            folder_display_name = folder_names.get(folder, folder)  # Используем человеко-понятное имя папки
+            print(f"\nРабота с папкой '{folder_display_name}'...")
+            
+            # Выбор папки
+            result = mail.select(folder)
+            if result[0] != 'OK':
+                print(f"Не удалось выбрать папку '{folder_display_name}'. Пропуск.")
+                continue
 
-        if result == "OK":
-            email_ids = data[0].split()
-            total_emails = len(email_ids)
-            print(f"Найдено писем для удаления: {total_emails}")
+            # Поиск писем старше указанного срока
+            result, data = mail.search(None, f'BEFORE {date_cutoff}')
+            if result == "OK":
+                email_ids = data[0].split()
+                total_emails = len(email_ids)
+                print(f"Найдено писем для удаления: {total_emails} в папке '{folder_display_name}'")
 
-            if total_emails == 0:
-                print("Нет писем для удаления.")
+                if total_emails == 0:
+                    print(f"Нет писем для удаления в папке '{folder_display_name}'.")
+                else:
+                    # Удаление писем
+                    for num in email_ids:
+                        mail.store(num, '+FLAGS', '\\Deleted')
+                        print(f"Письмо с ID {num.decode()} в папке '{folder_display_name}' помечено для удаления.")
+
+                    # Окончательное удаление писем
+                    mail.expunge()
+                    print(f"Удалено писем: {total_emails} из папки '{folder_display_name}'")
+
             else:
-                # Удаление писем
-                for num in email_ids:
-                    mail.store(num, '+FLAGS', '\\Deleted')
-                    print(f"Письмо с ID {num.decode()} помечено для удаления.")
-
-                # Окончательное удаление писем
-                mail.expunge()
-                print(f"Удалено писем: {total_emails}")
-
-        else:
-            print("Ошибка поиска писем.")
+                print(f"Ошибка поиска писем в папке '{folder_display_name}'.")
 
         # Закрытие соединения
         mail.logout()
@@ -57,5 +69,5 @@ def delete_old_emails(email_user, email_pass, folder="inbox", days=5):
 
 # Основной блок
 if __name__ == "__main__":
-    # Вызов функции
+    # Вызов функции с удалением писем во входящих и исходящих
     delete_old_emails(email_user, email_pass)
