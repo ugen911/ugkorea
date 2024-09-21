@@ -117,6 +117,47 @@ def print_first_five_rows(engine, table_name):
         for row in rows:
             print(row)
 
+def clean_string_columns(df):
+    """
+    Убираем пробелы и непечатные символы для всех строковых колонок в датафрейме.
+    """
+    # Применяем функцию только к строковым столбцам
+    df = df.apply(lambda col: col.str.strip() if col.dtype == 'object' else col)
+    df = df.apply(lambda col: col.str.encode('utf-8').str.decode('utf-8').str.strip() if col.dtype == 'object' else col)
+    return df
+
+
+def load_middle_max_price_data(file_path):
+    try:
+        data = pd.read_excel(file_path)
+        return data
+    except FileNotFoundError:
+        print(f"Файл '{file_path}' не найден.")
+        exit()
+
+def prepare_middle_max_price_data(data):
+    # Преобразование названий колонок в snake_case
+    data.columns = [snake_case(col) for col in data.columns]
+
+
+    # Выбираем нужные колонки, используя новые названия
+    middle_max_price = data[['kod_nomenklatury', 'srednjaja_tsena_zakupki', 'maksimalnaja_tsena_tovara']].copy()
+
+    # Преобразуем строковые значения в числовые и заменяем пустые значения на 0
+    middle_max_price['srednjaja_tsena_zakupki'] = middle_max_price['srednjaja_tsena_zakupki'].fillna(0).replace(',', '.', regex=True).astype(float)
+    middle_max_price['maksimalnaja_tsena_tovara'] = middle_max_price['maksimalnaja_tsena_tovara'].fillna(0).replace(',', '.', regex=True).astype(float)
+
+    # Переименуем колонки в финальные названия, если нужно для базы данных
+    middle_max_price.rename(columns={
+        'kod_nomenklatury': 'kod',
+        'srednjaja_tsena_zakupki': 'middleprice',
+        'maksimalnaja_tsena_tovara': 'maxprice'
+    }, inplace=True)
+
+    return middle_max_price
+
+
+
 def main():
     # Подключение к базе данных
     engine = get_db_engine()
@@ -127,41 +168,52 @@ def main():
     # Определение путей к файлам в зависимости от доступности
     local_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
     remote_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\ОстаткиДляАнализа.xls'
-    
+    middle_max_file_local = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\СредняяИМаксимальная.xls'
+    middle_max_file_remote = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\СредняяИМаксимальная.xls'
+
     if os.path.exists(local_path):
         data_file_path = local_path
         analog_file_path = r'D:\NAS\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+        middle_max_file_path = middle_max_file_local
     elif os.path.exists(remote_path):
         data_file_path = remote_path
         analog_file_path = r'\\26.218.196.12\заказы\Евгений\New\Файлы для работы Access\analogi.xls'
+        middle_max_file_path = middle_max_file_remote
     else:
         print("Ни один из путей к файлам не доступен.")
         return
-    
+
+    # Загрузка и обработка основных данных
     data = load_data(data_file_path)
     if data is not None:
-        # Удаление непечатных символов и преобразование в кодировку UTF-8
-        data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8').strip() if isinstance(x, str) else x))
-        
+        data = clean_string_columns(data)  # Удаление пробелов и непечатных символов
         nomenklatura, stock, price = prepare_data(data)
         export_to_db(engine, nomenklatura, 'nomenklaturaold')
         export_to_db(engine, stock, 'stockold')
         export_to_db(engine, price, 'priceold')
 
+    # Загрузка и обработка данных аналогов
     analog_data = prepare_analog_data(analog_file_path)
     if analog_data is not None:
-        # Удаление непечатных символов и преобразование в кодировку UTF-8
-        analog_data = analog_data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8').strip() if isinstance(x, str) else x))
-        
+        analog_data = clean_string_columns(analog_data)  # Удаление пробелов и непечатных символов
         export_to_db(engine, analog_data, 'groupanalogiold', index_col='kod_1s')
+
+    # Загрузка и обработка данных средней и максимальной цены
+    middle_max_data = load_middle_max_price_data(middle_max_file_path)
+    if middle_max_data is not None:
+        middle_max_data = clean_string_columns(middle_max_data)  # Удаление пробелов и непечатных символов
+        middle_max_price = prepare_middle_max_price_data(middle_max_data)
+        export_to_db(engine, middle_max_price, 'middlemaxprice', index_col='kod')
 
     # Вывод первых 5 строк из каждой созданной таблицы
     print_first_five_rows(engine, 'nomenklaturaold')
     print_first_five_rows(engine, 'stockold')
     print_first_five_rows(engine, 'priceold')
     print_first_five_rows(engine, 'groupanalogiold')
+    print_first_five_rows(engine, 'middlemaxprice')
 
     print("Все операции выполнены успешно.")
 
 if __name__ == "__main__":
     main()
+
