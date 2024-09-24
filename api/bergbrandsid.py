@@ -57,44 +57,61 @@ def get_price_with_brand_id(api_url=BASE_URL_BERG, api_key=API_KEY_BERG):
             return None
 
     def normalize_and_merge(brands_df, price_df):
-        brand_synonyms = {
-            "asam": "asam-sa",
-            "dongil": "dongil super star",
-            "hyundaikia": "hyundai kia",
-            "hyundai kia": "hyundai kia",
-            "hyundai-kia": "hyundai kia",
-            "hyundai/kia": "hyundai kia",
-            "kashiyama": "mk kashiyama",
-            "kyb": "kayaba",
-            "lemforder": "lemfoerder",
-            "lesjofors": "lesjoefors",
-            "lynx": "lynx auto",
-            "lynx auto": "lynx auto",
-            "lynxauto": "lynx auto",
-            "parts mall": "parts-mall",
-            "parts-mall": "parts-mall",
-            "partsmall": "parts-mall",
-            "pmc": "parts-mall",
-            "reinz": "victor reinz",
-            "sangsin": "sangsin brake",
-            "valeo phc": "phc",
-            "vernet": "vernet-calorstat",
-            "vernet-calorstat": "vernet-calorstat",
-            "just drive": "jd",
-            "startvolt": "стартвольт",
-            "elwis royal": "elwis"
+        # Маппинг брендов с фиксированными ID
+        fixed_brands = {
+            "knecht": 27,
+            "parts mall": 676,
+            "kyb": 399,
+            "reinz": 499,
+            "hyundaikia": 730,
+            "dongil": 840,
+            "sangsin": 637,
+            "startvolt": 1138181,
+            "lesjofors": 6,
+            "lynx": 709,
+            "vernet": 307,
+            "maruichi": 729,
+            "asakashi": 30278,
+            "jd": 1083935,
+            "viktor reinz": 499,
+            "asam": 1059030,
+            "gm": 711,
+            "chonwoo": 1195889,
+            "kashiyama": 592,
+            "lemforder": 19,
+            "cheon-woo": 1195889,
+            "стартвольт": 1138181,
+            "elwis": 330
         }
 
-        def normalize_brand_name(name):
-            name = re.sub(r'\W+', '', name).lower()
-            return brand_synonyms.get(name, name)
+        # Приведение к нижнему регистру для поиска совпадений без учета регистра
+        brands_df['name_clean'] = brands_df['name'].str.lower()
+        price_df['proizvoditel_clean'] = price_df['proizvoditel'].str.lower()
 
-        brands_df['name_clean'] = brands_df['name'].apply(lambda x: normalize_brand_name(x))
-        price_df['proizvoditel_clean'] = price_df['proizvoditel'].apply(lambda x: normalize_brand_name(x))
-
+        # Сначала присваиваем ID для полных совпадений между name из API и proizvoditel из get_final_df
         merged_df = price_df.merge(brands_df[['id', 'name_clean']], left_on='proizvoditel_clean', right_on='name_clean', how='left')
         price_df['brand_id'] = merged_df['id']
+
+        # Присваиваем ID для брендов, которые не нашли соответствие
+        price_df['brand_id'] = price_df.apply(
+            lambda row: fixed_brands.get(row['proizvoditel_clean'], row['brand_id']),
+            axis=1
+        )
+
         result_df = price_df[price_df['brand_id'].notna()]
+
+        # Список брендов без ID
+        brands_without_id = price_df[price_df['brand_id'].isna()]['proizvoditel_clean'].unique()
+
+        if len(brands_without_id) > 0:
+            print("Бренды без ID:")
+            for brand in brands_without_id:
+                print(brand)
+        else:
+            print("Все бренды получили свой ID.")
+        
+        # Сохраняем результат в файл
+        result_df.to_csv('result.csv')
         return result_df
 
     # Получаем данные о брендах и ценах
