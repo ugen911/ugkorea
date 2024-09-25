@@ -81,7 +81,9 @@ def get_price_with_brand_id(api_url=BASE_URL_BERG, api_key=API_KEY_BERG):
             "lemforder": 19,
             "cheon-woo": 1195889,
             "стартвольт": 1138181,
-            "elwis": 330
+            "elwis": 330,
+            "rhee jin": 794438,
+            "geunyoung": 1193789,
         }
 
         # Приведение к нижнему регистру для поиска совпадений без учета регистра
@@ -110,8 +112,6 @@ def get_price_with_brand_id(api_url=BASE_URL_BERG, api_key=API_KEY_BERG):
         else:
             print("Все бренды получили свой ID.")
         
-        # Сохраняем результат в файл
-        result_df.to_csv('result.csv')
         return result_df
 
     # Получаем данные о брендах и ценах
