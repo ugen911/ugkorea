@@ -86,7 +86,7 @@ def get_and_process_data():
         df['kod'] = df['kod'].str.strip()
 
     # Объединение таблиц
-    merged_df = pd.merge(nomenklaturaold, photoadress, on='kod', how='left')
+    merged_df = pd.merge(nomenklaturaold, photoadress, on='kod', how='right')
     merged_df = pd.merge(merged_df, stockold, on='kod', how='left')
 
     # Фильтрация данных
