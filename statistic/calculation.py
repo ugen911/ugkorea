@@ -65,9 +65,17 @@ def calculate_sales_metrics(sales_data: pd.DataFrame) -> pd.DataFrame:
             mean_sales = std_sales = 0
 
         # Count months without sales over the entire period in sales_data
-        months_without_sales = group[
-            (group['balance_filled'] > 0) & ((group['total_sales'].isna()) | (group['total_sales_filled'] <= 0))
-        ].shape[0]
+        if group['total_sales_filled'].sum() == 0:
+            # If no sales at all, set months_without_sales to the number of unique months
+            months_without_sales = group['year_month'].nunique()
+        elif group[(group['balance_filled'] > 0) & ((group['total_sales'].isna()) | (group['total_sales_filled'] <= 0))].empty:
+            # If there were sales in every month, set months_without_sales to 0
+            months_without_sales = 0
+        else:
+            # Otherwise, count months without sales where balance > 0 and sales are <= 0 or NaN
+            months_without_sales = group[
+                (group['balance_filled'] > 0) & ((group['total_sales'].isna()) | (group['total_sales_filled'] <= 0))
+            ].shape[0]
 
         # Calculate the number of months since the last sale
         last_sale_period = group[group['total_sales_filled'] > 0]['year_month'].max()
@@ -75,7 +83,8 @@ def calculate_sales_metrics(sales_data: pd.DataFrame) -> pd.DataFrame:
             months_since_last_sale = current_period - last_sale_period
             months_since_last_sale = months_since_last_sale.n
         else:
-            months_since_last_sale = 0
+            # If no sales were found, set months_since_last_sale to the total number of months in the observation
+            months_since_last_sale = group['year_month'].nunique()
 
         metrics.append({
             'kod': kod,

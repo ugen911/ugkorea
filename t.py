@@ -1,110 +1,88 @@
-import os
 import pandas as pd
-from sqlalchemy import MetaData, Table, Column, String, Boolean, Integer, Numeric
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import inspect
-from ugkorea.db.database import get_db_engine
+import numpy as np
+import logging
 
-# Подключаем движок базы данных
+from ugkorea.db.database import get_db_engine
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+
+
 engine = get_db_engine()
 
-# Устанавливаем сессию для работы с базой данных
-Session = sessionmaker(bind=engine)
-session = Session()
+import pandas as pd
+import numpy as np
 
-# Создаем объект MetaData для схемы access
-metadata = MetaData(schema='access')
+def clean_and_convert_summa(df):
+    # Удаляем пробелы, которые используются как разделители тысяч, и заменяем запятые на точки
+    df['summa'] = df['summa'].astype(str).str.replace('\s', '', regex=True).str.replace(',', '.')
+    # Преобразуем в числовой тип данных
+    df['summa'] = pd.to_numeric(df['summa'], errors='coerce').fillna(0)
+    return df
 
-# Инициализируем инспектор для проверки наличия таблиц
-inspector = inspect(engine)
+def perform_abc_xyz_analysis(engine):
+    # Загрузка данных из таблиц
+    prodazhi_df = pd.read_sql_table('prodazhi', con=engine)
+    nomenklatura_df = pd.read_sql_table('nomenklatura', con=engine)
 
-# Указываем локальный путь к файлу Excel
-file_path = r'C:\Users\evgen\OneDrive\Documents\Access\Номенклатура 1С.xlsx'
+    # Удаление пробелов и нежелательных символов в колонке kod
+    prodazhi_df['kod'] = prodazhi_df['kod'].str.strip()
+    nomenklatura_df['kod'] = nomenklatura_df['kod'].str.strip()
 
-# Проверяем, существует ли путь
-if not os.path.exists(file_path):
-    print(f"Файл {file_path} не существует.")
-else:
-    try:
-        # Читаем файл Excel
-        print(f"Чтение файла: {file_path}")
-        df = pd.read_excel(file_path, sheet_name=0)  # sheet_name=0 для первого листа
+    # Фильтрация nomenklatura по vidnomenklatury == "Товар"
+    filtered_nomenklatura = nomenklatura_df[nomenklatura_df['vidnomenklatury'] == "Товар"][['kod']]
 
-        if df.empty:
-            print(f"Файл {file_path} пустой, завершаем обработку.")
-        else:
-            # Преобразование строк "ИСТИНА" и "ЛОЖЬ" в булевы значения True и False
-            df = df.replace({'ИСТИНА': True, 'ЛОЖЬ': False})
+    # Фильтрация prodazhi на основе kod из отфильтрованной nomenklatura
+    filtered_prodazhi = prodazhi_df[prodazhi_df['kod'].isin(filtered_nomenklatura['kod'])].copy()
 
-            # Имя таблицы
-            table_name = 'Номенклатура_1С'
+    # Преобразование kolichestvo и summa
+    filtered_prodazhi['kolichestvo'] = pd.to_numeric(filtered_prodazhi['kolichestvo'], errors='coerce').fillna(0)
+    filtered_prodazhi = clean_and_convert_summa(filtered_prodazhi)
 
-            # Проверяем, существует ли таблица
-            if inspector.has_table(table_name, schema='access'):
-                print(f"Таблица {table_name} существует, удаляем её...")
-                table = Table(table_name, metadata, autoload_with=engine)
-                table.drop(engine)
+    # Преобразование period в дату
+    filtered_prodazhi['period'] = pd.to_datetime(filtered_prodazhi['period'], format='%d.%m.%Y')
+    filtered_prodazhi.to_csv("filtered_prodazhi.csv")
+    # Фильтрация данных за последние 13 месяцев от текущей даты
+    current_date = pd.Timestamp.now()
+    last_13_months = current_date - pd.DateOffset(months=13)
+    last_13_months_data = filtered_prodazhi[filtered_prodazhi['period'] >= last_13_months]
 
-            # Определение таблицы с правильными типами данных на основе скриншота
-            table = Table(
-                table_name, metadata,
-                Column('ЦБ', String(255)),
-                Column('Оригинальный артикул', String(255)),
-                Column('Артикул', String(255)),
-                Column('Стеллаж', String(255)),
-                Column('Наименование', String(255)),
-                Column('Производитель', String(255)),
-                Column('"Еденица измерения"', String(255)),  # Оставляем как "Еденица измерения" в кавычках
-                Column('Розничная цена', Numeric),
-                Column('Закуп 1С', Numeric),
-                Column('Не используется в заказе', Boolean),
-                Column('Неликвид', Boolean),
-                Column('Помечено на удаление', Boolean),
-                Column('Новая позиция (менее 6мес)', Boolean),
-                Column('Только в Корее', Boolean),
-                Column('Можно в РФ', Boolean),
-                Column('Зафиксировать минималки', Boolean),
-                Column('Категория ABC', String(255)),
-                Column('Категория XYZ', String(255)),
-                Column('Остаток', Integer),
-                Column('Минималка местная', Integer),
-                Column('Минималка Корея', Integer),
-                Column('Корейский закуп последний', Numeric),
-                Column('Сделаны фото', Boolean),
-                Column('Счетчик', Integer),
-                Column('Б/У', String(255)),
-                Column('ОстатокЗаказы', Integer),
-                Column('Лист Ожидания', Boolean),
-                extend_existing=True,  # Применение extend_existing на уровне таблицы
-                schema='access'
-            )
+    # ABC анализ по сумме
+    total_summa = last_13_months_data.groupby('kod')['summa'].sum()
+    total_summa_sorted = total_summa.sort_values(ascending=False)
+    cumulative_sum = total_summa_sorted.cumsum()
+    total_cumulative_sum = cumulative_sum.iloc[-1]
 
-            # Создаем таблицу
-            metadata.create_all(engine)
-            print(f"Таблица {table_name} создана.")
+    # Определение ABC категорий
+    abc_labels = pd.cut(cumulative_sum, 
+                        bins=[0, 0.05 * total_cumulative_sum, 0.8 * total_cumulative_sum, 0.95 * total_cumulative_sum, total_cumulative_sum], 
+                        labels=['A1', 'A', 'B', 'C'])
 
-            # Проверьте, что название колонки "Еденица измерения" соответствует в DataFrame
-            df.columns = [col if col != 'Еденица измерения' else '"Еденица измерения"' for col in df.columns]
+    # XYZ анализ по количеству в процентном соотношении
+    total_kolichestvo = last_13_months_data.groupby('kod')['kolichestvo'].sum()
+    total_kolichestvo_sorted = total_kolichestvo.sort_values(ascending=False)
+    cumulative_kolichestvo = total_kolichestvo_sorted.cumsum()
+    total_cumulative_kolichestvo = cumulative_kolichestvo.iloc[-1]
 
-            # Загрузка данных порциями
-            chunk_size = 500  # Размер порции данных
-            total_rows = len(df)
-            print(f"Загрузка данных порциями, всего строк: {total_rows}, размер порции: {chunk_size}")
+    # Определение XYZ категорий аналогично ABC анализу
+    xyz_labels = pd.cut(cumulative_kolichestvo, 
+                        bins=[0, 0.05 * total_cumulative_kolichestvo, 0.8 * total_cumulative_kolichestvo, 0.95 * total_cumulative_kolichestvo, total_cumulative_kolichestvo], 
+                        labels=['X1', 'X', 'Y', 'Z'])
 
-            for i, chunk in enumerate(range(0, total_rows, chunk_size)):
-                df_chunk = df.iloc[chunk:chunk + chunk_size]
-                print(f"Загружаем порцию {i + 1}, строки с {chunk} по {chunk + len(df_chunk)}...")
-                df_chunk.to_sql(table_name, con=engine, schema='access', if_exists='append', index=False)
-                print(f"Порция {i + 1} загружена успешно.")
+    # Объединение ABC и XYZ анализов в один DataFrame
+    abc_xyz_analysis = pd.DataFrame({
+        'ABC': abc_labels,
+        'XYZ': xyz_labels
+    }, index=total_summa_sorted.index)
 
-            print(f"Данные успешно загружены в таблицу {table_name}.")
+    # Проверка и заполнение категорий для товаров, которые были проданы хотя бы раз
+    sold_items = last_13_months_data['kod'].unique()
+    for item in sold_items:
+        if item not in abc_xyz_analysis.index:
+            abc_xyz_analysis.loc[item] = {'ABC': 'C', 'XYZ': 'Z'}
 
-    except SQLAlchemyError as e:
-        print(f"Ошибка при работе с таблицей {table_name}: {str(e)}")
-    except Exception as e:
-        print(f"Общая ошибка при обработке файла {file_path}: {str(e)}")
+    return abc_xyz_analysis
 
-# Закрываем сессию
-session.close()
-print("Обработка завершена.")
+
+
+statistic = perform_abc_xyz_analysis(engine=engine)
