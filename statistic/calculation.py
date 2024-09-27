@@ -22,9 +22,6 @@ union_data = pd.merge(merged_data, abc_xyz_analysis, on='kod', how='left')
 
 
 
-import pandas as pd
-from datetime import datetime
-
 def calculate_sales_metrics(sales_data: pd.DataFrame) -> pd.DataFrame:
     # Use the current date as the reference date
     reference_date = datetime.now()
@@ -108,4 +105,3 @@ sales_data.to_csv('sales_data.csv')
 
 print(union_data.head(20))
 print(union_data.columns)
-print(sales_data.head(50))
