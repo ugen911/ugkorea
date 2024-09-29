@@ -22,7 +22,7 @@ union_data = pd.merge(merged_data, abc_xyz_analysis, on='kod', how='left')
 
 
 
-def calculate_sales_metrics(sales_data: pd.DataFrame) -> pd.DataFrame:
+def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) -> pd.DataFrame:
     # Use the current date as the reference date
     reference_date = datetime.now()
     current_period = pd.Period(reference_date.strftime('%Y-%m'), freq='M')
@@ -102,15 +102,13 @@ def calculate_sales_metrics(sales_data: pd.DataFrame) -> pd.DataFrame:
     # Convert the results into a DataFrame
     sales_metrics = pd.DataFrame(metrics)
     
-    return sales_metrics
+    # Merge with union_data and print column names
+    union_data = union_data.merge(sales_metrics, on='kod', how='left')
+    return union_data
 
 
-# Use the function to calculate metrics
-sales_metrics = calculate_sales_metrics(sales_data)
-union_data = union_data.merge(sales_metrics, on='kod',how='left')
-union_data.to_csv('union_sales_data.csv')
-sales_data.to_csv('sales_data.csv')
-# Display the results
+
+union_data = calculate_sales_metrics(sales_data, union_data)
 
 print(union_data.head(20))
 print(union_data.columns)
