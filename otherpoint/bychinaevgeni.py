@@ -33,8 +33,8 @@ query = select(
     stockold.c.osnsklad
 ).select_from(
     nomenklatura
-    .join(priceold, func.trim(nomenklatura.c.kod) == func.trim(priceold.c.kod), isouter=True)  # Левое соединение с TRIM
-    .join(stockold, func.trim(nomenklatura.c.kod) == func.trim(stockold.c.kod), isouter=True)  # Левое соединение с TRIM
+    .join(priceold, func.trim(nomenklatura.c.kod) == func.trim(priceold.c.kod), isouter=True)
+    .join(stockold, func.trim(nomenklatura.c.kod) == func.trim(stockold.c.kod), isouter=True)
 ).where(or_(*conditions))
 
 # Выполняем запрос и загружаем данные в DataFrame
@@ -66,32 +66,49 @@ filtered_salespivot_df = salespivot_df[salespivot_df['year_month'].dt.strftime('
 
 # Создаем сводную таблицу (pivot), где строки — это 'kod', колонки — это 'year_month', а значения — это 'kolichestvo'
 pivot_table = filtered_salespivot_df.pivot_table(
-    index='kod',  # Индексы — это код
-    columns=filtered_salespivot_df['year_month'].dt.strftime('%Y-%m'),  # Названия колонок — это year_month в формате ГГГГ-ММ
-    values='kolichestvo',  # Значения — это kolichestvo
-    aggfunc='sum',  # Агрегируем с помощью суммы (если на всякий случай есть дубли)
-    fill_value=0  # Заполняем отсутствующие значения нулями
+    index='kod',
+    columns=filtered_salespivot_df['year_month'].dt.strftime('%Y-%m'),
+    values='kolichestvo',
+    aggfunc='sum',
+    fill_value=0
 )
 
 # Добавляем колонку с суммой продаж за все месяцы
 pivot_table['Total_Sales'] = pivot_table.sum(axis=1)
 
-# Сортируем столбцы в хронологическом порядке, оставляя колонку 'Total_Sales' последней
-columns_sorted = sorted(pivot_table.columns[:-1]) + ['Total_Sales']
+# Добавляем отсутствующие месяцы в сводную таблицу и заполняем их нулями
+for month in last_12_months:
+    if month not in pivot_table.columns:
+        pivot_table[month] = 0
+
+# Сортируем столбцы с датами в хронологическом порядке
+columns_with_dates = sorted([col for col in pivot_table.columns if col != 'Total_Sales'], key=lambda x: pd.to_datetime(x, format='%Y-%m'))
+columns_sorted = columns_with_dates + ['Total_Sales']
+
+# Перестраиваем таблицу с новым порядком столбцов
 pivot_table = pivot_table[columns_sorted]
 
 # Объединяем итоговую сводную таблицу с final_df по полю 'kod'
 final_with_sales_df = pd.merge(final_df, pivot_table, on='kod', how='left')
 
+# Добавляем отсутствующие месяцы в итоговый DataFrame и заполняем их нулями
+for month in last_12_months:
+    if month not in final_with_sales_df.columns:
+        final_with_sales_df[month] = 0
+
 # Заполняем NaN значения в колонках с продажами нулями
 columns_to_fill = list(last_12_months) + ['Total_Sales']
 final_with_sales_df[columns_to_fill] = final_with_sales_df[columns_to_fill].fillna(0)
 
-# Удаляем строки, где 'tsenazakup' и 'tsenarozn' равны 0
-final_with_sales_df = final_with_sales_df.query("tsenazakup != 0 or tsenarozn != 0")
+# Используем фильтрацию с помощью логических условий
+final_with_sales_df = final_with_sales_df[(final_with_sales_df['tsenazakup'] != 0) | (final_with_sales_df['tsenarozn'] != 0)]
 
 # Сортируем DataFrame по колонке 'naimenovaniepolnoe' в алфавитном порядке
 final_with_sales_df = final_with_sales_df.sort_values(by='naimenovaniepolnoe')
+
+# Переставляем колонки в итоговом DataFrame
+final_with_sales_df = final_with_sales_df[['kod', 'artikul', 'proizvoditel', 'naimenovaniepolnoe', 'datasozdanija', 
+                                           'tsenazakup', 'tsenarozn', 'osnsklad'] + columns_with_dates + ['Total_Sales']]
 
 # Попробуем сначала сохранить файл локально, если не получится, попробуем по сети
 local_path = r"D:\NAS\общая\АРХИВ\Евгений Т"
