@@ -9,24 +9,15 @@ from datetime import datetime, timedelta
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-engine = get_db_engine()
-
-# Загрузка данных с использованием функций
-sales_data, nomenklatura_ml = get_final_data(engine)
-nomenklatura_merged, stockendmonth, priceendmonth, postuplenija, prodazhi = load_and_process_data(engine)
-abc_xyz_analysis = perform_abc_xyz_analysis(engine)
-
-# Объединение таблиц по полю 'kod'
-merged_data = pd.merge(nomenklatura_ml, nomenklatura_merged[['kod', 'naimenovanie', 'artikul', 'edizm', 'datasozdanija', 'osnsklad', 'tsenarozn']], on='kod', how='left')
-union_data = pd.merge(merged_data, abc_xyz_analysis, on='kod', how='left')
-
-
 
 def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) -> pd.DataFrame:
     # Use the current date as the reference date
     reference_date = datetime.now()
     current_period = pd.Period(reference_date.strftime('%Y-%m'), freq='M')
-    
+
+    # Отладочная информация
+    print("Начинаем расчет метрик продаж...")
+
     # Calculate relevant periods directly as Period objects
     twelve_months_ago = current_period - 12
     three_months_ago = current_period - 3
@@ -38,9 +29,11 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
 
     # Initialize an empty DataFrame to store the results
     metrics = []
+    print("Происходит расчет метрик средних продаж, отклонений, суммарных продаж в разные периоды, время с последней продажи и т.п...")
 
     # Group by 'kod' and calculate the required sums in a single pass
     for kod, group in sales_data.groupby('kod'):
+
         # Fill NaN values in 'total_sales' and 'balance' with 0 for sales calculations
         group['total_sales_filled'] = group['total_sales'].fillna(0)
         group['balance_filled'] = group['balance'].fillna(0)
@@ -103,6 +96,7 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     sales_metrics = pd.DataFrame(metrics)
     
     # Merge with union_data
+    print("Объединение данных union_data с рассчитанными метриками...")
     union_data = union_data.merge(sales_metrics, on='kod', how='left')
 
     # Calculate 'min_stock' based on the given logic
@@ -119,6 +113,7 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
         else:
             return round((row['mean_sales_last_12_months'] + row['std_sales_last_12_months']) + 0.49)
 
+    print("Вычисление начальных значений min_stock...")
     union_data['min_stock'] = union_data.apply(calculate_min_stock, axis=1)
 
     # Adjust 'min_stock' based on sales data from the previous year
@@ -138,6 +133,7 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
             return relevant_sales
         return row['min_stock']
 
+    print("Корректировка min_stock на основе данных о продажах за прошлый год...")
     union_data['min_stock'] = union_data.apply(adjust_min_stock, axis=1)
 
     # Further adjust 'min_stock' if 'datasozdanija' is in the current or previous month
@@ -152,14 +148,43 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
                     return max_min_stock
         return row['min_stock']
 
+    print("Корректировка min_stock на основе даты создания...")
     union_data['min_stock'] = union_data.apply(adjust_min_stock_for_creation_date, axis=1)
-    
+
+    # Adjust 'min_stock' to be even if certain phrases are in 'naimenovanie'
+    def make_min_stock_even(row):
+        phrases = ["пружина амортизатора", "пружина задней подвески", "rh/lh", "lh/rh", "fr/rr", 
+                   "втулка поперечного стабилизатора", "рем. ком. суппорта", "подшипник опоры стойки", 
+                   "опора задней стойки", "опора передней стойки"]
+        naimenovanie_lower = row['naimenovanie'].lower()  # Приводим naimenovanie к нижнему регистру
+        if any(phrase in naimenovanie_lower for phrase in phrases) and row['min_stock'] % 2 != 0:
+            return row['min_stock'] + 1  # Сделать четным, добавив 1
+        return row['min_stock']
+
+    print("Корректировка min_stock на четное значение для определенных наименований...")
+    union_data['min_stock'] = union_data.apply(make_min_stock_even, axis=1)
+
+    print("Завершено!")
     return union_data
 
 
 
+if __name__ == "__main__":
+    engine = get_db_engine()
 
-union_data = calculate_sales_metrics(sales_data, union_data)
-union_data.to_csv('union_data.csv')
-print(union_data.head(20))
-print(union_data.columns)
+    # Загрузка данных
+    sales_data, nomenklatura_ml = get_final_data(engine)
+    nomenklatura_merged, stockendmonth, priceendmonth, postuplenija, prodazhi = load_and_process_data(engine)
+    abc_xyz_analysis = perform_abc_xyz_analysis(engine)
+
+    # Объединение данных
+    merged_data = pd.merge(nomenklatura_ml, nomenklatura_merged[['kod', 'naimenovanie', 'artikul', 'edizm', 'datasozdanija', 'osnsklad', 'tsenarozn']], on='kod', how='left')
+    union_data = pd.merge(merged_data, abc_xyz_analysis, on='kod', how='left')
+
+    # Вычисление метрик продаж
+    union_data = calculate_sales_metrics(sales_data, union_data)
+
+    # Сохранение данных в базу данных
+    print("Сохранение результатов в базу данных...")
+    union_data.to_sql('full_statistic', con=engine, if_exists='replace', index=False)
+    print("Данные успешно сохранены в таблицу 'full_statistic'.")
