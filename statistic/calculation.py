@@ -102,13 +102,52 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     # Convert the results into a DataFrame
     sales_metrics = pd.DataFrame(metrics)
     
-    # Merge with union_data and print column names
+    # Merge with union_data
     union_data = union_data.merge(sales_metrics, on='kod', how='left')
+
+    # Calculate 'min_stock' based on the given logic
+    def calculate_min_stock(row):
+    # Проверяем, являются ли средние продажи или стандартное отклонение NaN
+        if pd.isna(row['mean_sales_last_12_months']) or pd.isna(row['std_sales_last_12_months']):
+            return 0  # Возвращаем 0, если нет данных для расчетов
+
+        if row['ABC'] in ['A', 'A1']:
+            return round((row['mean_sales_last_12_months'] * 1 + row['std_sales_last_12_months']) + 0.49)
+        elif row['ABC'] == 'B':
+            return round((row['mean_sales_last_12_months'] * 1 + row['std_sales_last_12_months']) + 0.49)
+        elif row['mean_sales_last_12_months'] == 0:
+            return 1
+        else:
+            return round((row['mean_sales_last_12_months'] + row['std_sales_last_12_months']) + 0.49)
+
+
+    union_data['min_stock'] = union_data.apply(calculate_min_stock, axis=1)
+
+    # Adjust 'min_stock' based on sales data from the previous year
+    def adjust_min_stock(row):
+        current_month = current_period.month
+        last_year_same_month = pd.Period(f"{current_period.year - 1}-{current_month:02d}", freq='M')
+        last_year_month_minus_1 = last_year_same_month - 1
+        last_year_month_plus_1 = last_year_same_month + 1
+
+        # Find sales for the specified periods
+        relevant_sales = sales_data[
+            (sales_data['kod'] == row['kod']) &
+            (sales_data['year_month'].isin([last_year_same_month, last_year_month_minus_1, last_year_month_plus_1]))
+        ]['total_sales'].max()
+        
+        if pd.notna(relevant_sales) and relevant_sales > row['min_stock']:
+            return relevant_sales
+        return row['min_stock']
+
+    union_data['min_stock'] = union_data.apply(adjust_min_stock, axis=1)
+    
     return union_data
 
 
 
-union_data = calculate_sales_metrics(sales_data, union_data)
 
+union_data = calculate_sales_metrics(sales_data, union_data)
+union_data.to_csv('union_data.csv')
 print(union_data.head(20))
 print(union_data.columns)
