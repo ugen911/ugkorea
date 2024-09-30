@@ -11,14 +11,19 @@ engine = get_db_engine()
 @bp.route('/')
 def list_nomenclature():
     """
-    Отображает список всех элементов номенклатуры.
+    Перенаправляет на первый элемент номенклатуры или отображает сообщение, если элементов нет.
     """
     with engine.connect() as connection:
-        result = connection.execute(text("SELECT kod, naimenovaniepolnoe FROM nomenklatura"))
-        nomenclature_list = result.fetchall()
+        # Получаем первый элемент из таблицы nomenklatura
+        result = connection.execute(text("SELECT kod FROM nomenklatura ORDER BY kod ASC LIMIT 1"))
+        first_item = result.fetchone()
     
-    # Используем шаблон 'nomenclature/list.html' для отображения списка
-    return render_template('nomenclature/list.html', nomenclature_list=nomenclature_list)
+    if first_item:
+        # Перенаправляем на страницу деталей первого элемента
+        return redirect(url_for('nomenklatura.detail_nomenclature', kod=first_item.kod))
+    else:
+        # Если в базе данных нет элементов, отображаем сообщение
+        return "В базе данных нет элементов номенклатуры."
 
 @bp.route('/<string:kod>')
 def detail_nomenclature(kod):
@@ -79,12 +84,13 @@ def edit_nomenclature(kod):
         if request.method == 'POST':
             # Обновляем данные элемента
             new_name = request.form['naimenovaniepolnoe']
-            new_proizvoditel = request.form.get('proizvoditel', '')
+            new_artikul = request.form.get('artikul', None)
+            new_proizvoditel = request.form.get('proizvoditel', None)
 
             try:
                 connection.execute(
-                    text("UPDATE nomenklatura SET naimenovaniepolnoe = :name, proizvoditel = :proizvoditel WHERE kod = :kod"),
-                    {'name': new_name, 'proizvoditel': new_proizvoditel, 'kod': kod}
+                    text("UPDATE nomenklatura SET naimenovaniepolnoe = :name, artikul = :artikul, proizvoditel = :proizvoditel WHERE kod = :kod"),
+                    {'name': new_name, 'artikul': new_artikul, 'proizvoditel': new_proizvoditel, 'kod': kod}
                 )
                 return redirect(url_for('nomenklatura.detail_nomenclature', kod=kod))
             except Exception as e:

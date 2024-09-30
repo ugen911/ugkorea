@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Детали элемента номенклатуры</title>
+</head>
+<body>
+    <h1>Детали элемента номенклатуры</h1>
+    <p><strong>Код:</strong> {{ item.kod }}</p>
+    <p><strong>Наименование:</strong> {{ item.naimenovaniepolnoe }}</p>
+    <p><strong>Артикул:</strong> {{ item.artikul }}</p>
+    <p><strong>Производитель:</strong> {{ item.proizvoditel }}</p>
+    
+    <!-- Добавляем ссылку на редактирование -->
+    <a href="{{ url_for('nomenklatura.edit_nomenclature', kod=item.kod) }}">Редактировать</a>
+
+    <br><br>
+    <!-- Добавляем ссылку для возврата к списку номенклатуры -->
+    <a href="{{ url_for('nomenklatura.list_nomenclature') }}">Назад к списку</a>
+</body>
+</html>

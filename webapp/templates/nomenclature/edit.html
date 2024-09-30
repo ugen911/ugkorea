@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Редактировать элемент номенклатуры</title>
+</head>
+<body>
+    <h1>Редактировать элемент номенклатуры</h1>
+
+    {% if error %}
+        <p style="color: red;">Ошибка: {{ error }}</p>
+    {% endif %}
+
+    <form method="post">
+        <label for="naimenovaniepolnoe">Наименование:</label>
+        <input type="text" id="naimenovaniepolnoe" name="naimenovaniepolnoe" value="{{ item.naimenovaniepolnoe }}">
+        <br><br>
+
+        <label for="artikul">Артикул:</label>
+        <input type="text" id="artikul" name="artikul" value="{{ item.artikul }}">
+        <br><br>
+
+        <label for="proizvoditel">Производитель:</label>
+        <input type="text" id="proizvoditel" name="proizvoditel" value="{{ item.proizvoditel }}">
+        <br><br>
+
+        <button type="submit">Сохранить</button>
+    </form>
+
+    <a href="{{ url_for('nomenklatura.detail_nomenclature', kod=item.kod) }}">Отмена</a>
+</body>
+</html>
