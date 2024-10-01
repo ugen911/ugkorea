@@ -164,6 +164,25 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     print("Корректировка min_stock на четное значение для определенных наименований...")
     union_data['min_stock'] = union_data.apply(make_min_stock_even, axis=1)
 
+    def adjust_min_stock_for_old_creation_date_and_no_sales(row):
+        datasozdanija_date = pd.to_datetime(row['datasozdanija'], format='%d.%m.%Y %H:%M:%S', errors='coerce')
+    
+        # Если datasozdanija пустая, считаем, что она старше 2 месяцев
+        is_old_creation_date = pd.isna(datasozdanija_date) or datasozdanija_date <= (current_period - 2).start_time
+
+        # Проверяем условия: datasozdanija старше чем 2 месяца (или пустая), months_since_last_sale больше 12 и mean_sales_last_12_months равен 0 или None
+        if is_old_creation_date and (row['months_since_last_sale'] > 12) and (pd.isna(row['mean_sales_last_12_months']) or row['mean_sales_last_12_months'] == 0):
+        
+            # Найти максимальное значение min_stock для товаров с такой же группой аналогов
+            max_min_stock = union_data[union_data['gruppa_analogov'] == row['gruppa_analogov']]['min_stock'].max()
+        
+            if max_min_stock > row['min_stock']:
+                return max_min_stock
+        return row['min_stock']
+
+    print("Корректировка min_stock для товаров старше 2 месяцев или с отсутствующей датой создания и отсутствием продаж...")
+    union_data['min_stock'] = union_data.apply(adjust_min_stock_for_old_creation_date_and_no_sales, axis=1)
+
     print("Завершено!")
     return union_data
 
