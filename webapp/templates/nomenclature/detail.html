@@ -3,19 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <title>Детали элемента номенклатуры</title>
+    <style>
+        .detail-container {
+            max-width: 800px;
+            margin: 20px auto;
+            font-family: Arial, sans-serif;
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 10px;
+            background-color: #f9f9f9;
+        }
+        .detail-header {
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .detail-row {
+            margin-bottom: 10px;
+        }
+        .detail-label {
+            font-weight: bold;
+            width: 200px;
+            display: inline-block;
+        }
+        .navigation-buttons {
+            margin-top: 20px;
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-    <h1>Детали элемента номенклатуры</h1>
-    <p><strong>Код:</strong> {{ item.kod }}</p>
-    <p><strong>Наименование:</strong> {{ item.naimenovaniepolnoe }}</p>
-    <p><strong>Артикул:</strong> {{ item.artikul }}</p>
-    <p><strong>Производитель:</strong> {{ item.proizvoditel }}</p>
-    
-    <!-- Добавляем ссылку на редактирование -->
-    <a href="{{ url_for('nomenklatura.edit_nomenclature', kod=item.kod) }}">Редактировать</a>
+    <div class="detail-container">
+        <div class="detail-header">Детали элемента номенклатуры</div>
+        <div class="detail-row"><span class="detail-label">Код:</span> {{ item.kod }}</div>
+        <div class="detail-row"><span class="detail-label">Артикул:</span> {{ item.artikul }}</div>
+        <div class="detail-row"><span class="detail-label">Наименование:</span> {{ item.naimenovaniepolnoe }}</div>
+        <div class="detail-row"><span class="detail-label">Производитель:</span> {{ item.proizvoditel }}</div>
+        <div class="detail-row"><span class="detail-label">Вид номенклатуры:</span> {{ item.vidnomenklatury }}</div>
+        <div class="detail-row"><span class="detail-label">Базовая единица:</span> {{ item.bazovajaedinitsa }}</div>
+        <div class="detail-row"><span class="detail-label">Дата создания:</span> {{ item.datasozdanija }}</div>
+        <div class="detail-row"><span class="detail-label">Тип детали:</span> {{ item.type_detail }}</div>
+        <div class="detail-row"><span class="detail-label">Стеллаж:</span> {{ item.stellazh }}</div>
+        <div class="detail-row"><span class="detail-label">Пометка удаления:</span> {{ item.pometkaudalenija }}</div>
+        <div class="detail-row"><span class="detail-label">Цена закупки:</span> {{ item.tsenazakup }}</div>
+        <div class="detail-row"><span class="detail-label">Розничная цена:</span> {{ item.tsenarozn }}</div>
+        <div class="detail-row"><span class="detail-label">Средняя цена:</span> {{ item.middleprice }}</div>
+        <div class="detail-row"><span class="detail-label">Максимальная цена:</span> {{ item.maxprice }}</div>
+        <div class="detail-row"><span class="detail-label">Остаток на складе:</span> {{ item.osnsklad }}</div>
+        <div class="detail-row"><span class="detail-label">Заказы на складе:</span> {{ item.zakazy_sklad }}</div>
 
-    <br><br>
-    <!-- Добавляем ссылку для возврата к списку номенклатуры -->
-    <a href="{{ url_for('nomenklatura.list_nomenclature') }}">Назад к списку</a>
+        <!-- Кнопки для перехода между элементами -->
+        <div class="navigation-buttons">
+            {% if prev_item %}
+                <a href="{{ url_for('nomenklatura.detail_nomenclature', kod=prev_item.kod) }}">Назад</a>
+            {% endif %}
+            {% if next_item %}
+                <a href="{{ url_for('nomenklatura.detail_nomenclature', kod=next_item.kod) }}">Далее</a>
+            {% endif %}
+        </div>
+
+        <!-- Добавляем ссылку для возврата к списку номенклатуры -->
+        <br><br>
+        <a href="{{ url_for('nomenklatura.list_nomenclature') }}">Назад к списку</a>
+    </div>
 </body>
 </html>

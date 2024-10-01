@@ -28,23 +28,62 @@ def list_nomenclature():
 @bp.route('/<string:kod>')
 def detail_nomenclature(kod):
     """
-    Отображает подробную информацию об элементе номенклатуры.
+    Отображает подробную информацию об элементе номенклатуры, объединяя данные из нескольких таблиц.
     """
     with engine.connect() as connection:
-        # Получаем детали элемента номенклатуры по kod
-        result = connection.execute(text("SELECT * FROM nomenklatura WHERE kod = :kod"), {'kod': kod})
-        item = result.fetchone()
+        # Выполняем объединенный запрос к базе данных для текущего элемента
+        query = text("""
+            SELECT 
+                TRIM(n.kod) AS kod,
+                n.artikul,
+                n.naimenovaniepolnoe,
+                n.proizvoditel,
+                n.vidnomenklatury,
+                n.bazovajaedinitsa,
+                n.datasozdanija,
+                td.type_detail,
+                no.stellazh,
+                no.pometkaudalenija,
+                po.tsenazakup,
+                po.tsenarozn,
+                mp.middleprice,
+                mp.maxprice,
+                so.osnsklad,
+                so.zakazy_sklad
+            FROM nomenklatura n
+            LEFT JOIN typedetailgen td ON TRIM(n.kod) = TRIM(td.kod)
+            LEFT JOIN nomenklaturaold no ON TRIM(n.kod) = TRIM(no.kod)
+            LEFT JOIN priceold po ON TRIM(n.kod) = TRIM(po.kod)
+            LEFT JOIN middlemaxprice mp ON TRIM(n.kod) = TRIM(mp.kod)
+            LEFT JOIN stockold so ON TRIM(n.kod) = TRIM(so.kod)
+            WHERE n.vidnomenklatury = 'Товар' AND TRIM(n.kod) = :kod
+        """)
         
-        # Находим следующий и предыдущий элемент для навигации
-        next_item = connection.execute(
-            text("SELECT kod FROM nomenklatura WHERE kod > :kod ORDER BY kod ASC LIMIT 1"), {'kod': kod}
-        ).fetchone()
-        prev_item = connection.execute(
-            text("SELECT kod FROM nomenklatura WHERE kod < :kod ORDER BY kod DESC LIMIT 1"), {'kod': kod}
-        ).fetchone()
-    
-    # Используем шаблон 'nomenclature/detail.html' для отображения деталей
+        item = connection.execute(query, {'kod': kod.strip()}).fetchone()
+        
+        # Проверяем, нашли ли элемент
+        if item is None:
+            return "Элемент номенклатуры не найден."
+        
+        # Логика для поиска следующего и предыдущего элемента
+        next_item_query = text("""
+            SELECT kod FROM nomenklatura 
+            WHERE vidnomenklatury = 'Товар' AND naimenovaniepolnoe > :name 
+            ORDER BY naimenovaniepolnoe ASC LIMIT 1
+        """)
+        next_item = connection.execute(next_item_query, {'name': item.naimenovaniepolnoe}).fetchone()
+        
+        prev_item_query = text("""
+            SELECT kod FROM nomenklatura 
+            WHERE vidnomenklatury = 'Товар' AND naimenovaniepolnoe < :name 
+            ORDER BY naimenovaniepolnoe DESC LIMIT 1
+        """)
+        prev_item = connection.execute(prev_item_query, {'name': item.naimenovaniepolnoe}).fetchone()
+
+    # Используем шаблон 'nomenclature/detail.html' для отображения подробной информации
     return render_template('nomenclature/detail.html', item=item, next_item=next_item, prev_item=prev_item)
+
+
 
 @bp.route('/add', methods=['GET', 'POST'])
 def add_nomenclature():
@@ -72,43 +111,4 @@ def add_nomenclature():
     # Показ формы для добавления элемента
     return render_template('nomenclature/add.html')
 
-@bp.route('/<string:kod>/edit', methods=['GET', 'POST'])
-def edit_nomenclature(kod):
-    """
-    Редактирует элемент номенклатуры.
-    """
-    with engine.connect() as connection:
-        # Получаем текущие данные элемента
-        item = connection.execute(text("SELECT * FROM nomenklatura WHERE kod = :kod"), {'kod': kod}).fetchone()
-        
-        if request.method == 'POST':
-            # Обновляем данные элемента
-            new_name = request.form['naimenovaniepolnoe']
-            new_artikul = request.form.get('artikul', None)
-            new_proizvoditel = request.form.get('proizvoditel', None)
 
-            try:
-                connection.execute(
-                    text("UPDATE nomenklatura SET naimenovaniepolnoe = :name, artikul = :artikul, proizvoditel = :proizvoditel WHERE kod = :kod"),
-                    {'name': new_name, 'artikul': new_artikul, 'proizvoditel': new_proizvoditel, 'kod': kod}
-                )
-                return redirect(url_for('nomenklatura.detail_nomenclature', kod=kod))
-            except Exception as e:
-                print(f"Ошибка при редактировании номенклатуры: {e}")
-                return render_template('nomenclature/edit.html', item=item, error=str(e))
-
-    # Показ формы для редактирования элемента
-    return render_template('nomenclature/edit.html', item=item)
-
-@bp.route('/<string:kod>/delete', methods=['POST'])
-def delete_nomenclature(kod):
-    """
-    Удаляет элемент номенклатуры.
-    """
-    with engine.connect() as connection:
-        try:
-            connection.execute(text("DELETE FROM nomenklatura WHERE kod = :kod"), {'kod': kod})
-            return redirect(url_for('nomenklatura.list_nomenclature'))
-        except Exception as e:
-            print(f"Ошибка при удалении номенклатуры: {e}")
-            return redirect(url_for('nomenklatura.detail_nomenclature', kod=kod, error=str(e)))
