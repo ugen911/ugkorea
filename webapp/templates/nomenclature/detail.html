@@ -1,135 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <title>Детали элемента номенклатуры</title>
     <style>
-        .container {
-            max-width: 1200px;
-            margin: 20px auto;
-            font-family: Arial, sans-serif;
-        }
-        .block {
-            border: 1px solid #ddd;
-            padding: 20px;
+        .detail-section,
+        .stats-section,
+        .graph-section {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 20px;
             border-radius: 10px;
             background-color: #f9f9f9;
-            margin-bottom: 20px;
         }
-        .header {
-            font-size: 24px;
-            margin-bottom: 20px;
+
+        .detail-section h2,
+        .stats-section h3,
+        .graph-section h3 {
             text-align: center;
+            margin-bottom: 20px;
         }
-        .row {
-            margin-bottom: 10px;
+
+        .key-value-pair {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
         }
-        .label {
+
+        .key {
             font-weight: bold;
-            width: 200px;
-            display: inline-block;
-        }
-        .graph-container {
-            text-align: center;
-        }
-        .min-stock {
-            font-size: 20px;
-            color: red;
-            text-align: center;
-        }
-        .navigation-buttons {
-            text-align: center;
-            margin: 20px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        table, th, td {
-            border: 1px solid #ddd;
-        }
-        th, td {
-            padding: 10px;
-            text-align: center;
-        }
-        th {
-            background-color: #f2f2f2;
         }
     </style>
 </head>
+
 <body>
-    <div class="container">
-        <!-- Блок основной информации -->
-        <div class="block">
-            <div class="header">Детали элемента номенклатуры</div>
-            <div class="row"><span class="label">Код:</span> {{ item.kod }}</div>
-            <div class="row"><span class="label">Артикул:</span> {{ item.artikul }}</div>
-            <div class="row"><span class="label">Наименование:</span> {{ item.naimenovaniepolnoe }}</div>
-            <div class="row"><span class="label">Производитель:</span> {{ item.proizvoditel }}</div>
-            <div class="row"><span class="label">Вид номенклатуры:</span> {{ item.vidnomenklatury }}</div>
-            <div class="row"><span class="label">Базовая единица:</span> {{ item.bazovajaedinitsa }}</div>
-            <div class="row"><span class="label">Дата создания:</span> {{ datasozdanija_formatted }}</div>
+    <div class="container mt-4">
+        <!-- Секция деталей элемента номенклатуры -->
+        <div class="detail-section">
+            <h2>Детали элемента номенклатуры</h2>
+            <div class="key-value-pair"><span class="key">Код:</span> <span>{{ item.kod }}</span></div>
+            <div class="key-value-pair"><span class="key">Артикул:</span> <span>{{ item.artikul }}</span></div>
+            <div class="key-value-pair"><span class="key">Наименование:</span> <span>{{ item.naimenovaniepolnoe
+                    }}</span></div>
+            <div class="key-value-pair"><span class="key">Производитель:</span> <span>{{ item.proizvoditel }}</span>
+            </div>
+            <div class="key-value-pair"><span class="key">Тип детали:</span> <span>{{ item.type_detail }}</span></div>
+            <div class="key-value-pair"><span class="key">Стеллаж:</span> <span>{{ item.stellazh }}</span></div>
+            <div class="key-value-pair"><span class="key">Пометка удаления:</span> <span>{{ item.pometkaudalenija
+                    }}</span></div>
+            <div class="key-value-pair"><span class="key">Закупочная цена:</span> <span>{{ item.tsenazakup }}</span>
+            </div>
+            <div class="key-value-pair"><span class="key">Розничная цена:</span> <span>{{ item.tsenarozn }}</span></div>
+            <div class="key-value-pair"><span class="key">Средняя цена:</span> <span>{{ item.middleprice }}</span></div>
+            <div class="key-value-pair"><span class="key">Максимальная цена:</span> <span>{{ item.maxprice }}</span>
+            </div>
+            <div class="key-value-pair"><span class="key">Остаток на складе:</span> <span>{{ item.osnsklad }}</span>
+            </div>
+            <div class="key-value-pair"><span class="key">Заказы на складе:</span> <span>{{ item.zakazy_sklad }}</span>
+            </div>
+            <div class="key-value-pair"><span class="key">Базовая единица:</span> <span>{{ item.bazovajaedinitsa
+                    }}</span></div>
+            <div class="key-value-pair"><span class="key">Дата создания:</span> <span>{{ datasozdanija_formatted
+                    }}</span></div>
+        </div>
+
+        <!-- Секция статистики -->
+        <div class="stats-section">
+            <h3>Статистика</h3>
+            <div class="key-value-pair"><span class="key">ABC:</span> <span>{{ stats.ABC }}</span></div>
+            <div class="key-value-pair"><span class="key">XYZ:</span> <span>{{ stats.XYZ }}</span></div>
+            <div class="key-value-pair"><span class="key">Продажи за 12 месяцев:</span> <span>{{
+                    stats.total_sales_last_12_months }}</span></div>
+            <div class="key-value-pair"><span class="key">Продажи за 3 месяца:</span> <span>{{
+                    stats.total_sales_last_3_months }}</span></div>
+            <div class="key-value-pair"><span class="key">Продажи два года назад:</span> <span>{{
+                    stats.sum_sales_two_years_ago }}</span></div>
+            <div class="key-value-pair"><span class="key">Продажи три года назад:</span> <span>{{
+                    stats.sum_sales_three_years_ago }}</span></div>
+            <div class="key-value-pair"><span class="key">Средние продажи за 12 месяцев:</span> <span>{{
+                    stats.mean_sales_last_12_months }}</span></div>
+            <div class="key-value-pair"><span class="key">Месяцев без продаж:</span> <span>{{ stats.months_without_sales
+                    }}</span></div>
+            <div class="key-value-pair"><span class="key">Месяцев с момента последней продажи:</span> <span>{{
+                    stats.months_since_last_sale }}</span></div>
+            <div class="key-value-pair"><span class="key text-danger">Минимальный остаток:</span> <span>{{
+                    stats.min_stock }}</span></div>
+        </div>
+
+        <!-- Секция графика -->
+        <div class="graph-section">
+            <h3>Сводный график продаж и закупок</h3>
+            {{ graph_html|safe }}
         </div>
 
         <!-- Навигационные кнопки -->
-        <div class="navigation-buttons">
+        <div class="text-center mb-4">
             {% if prev_item %}
-                <a href="{{ url_for('nomenklatura.detail_nomenclature', kod=prev_item.kod) }}">Назад</a>
+            <a href="{{ url_for('nomenklatura.detail_nomenclature', kod=prev_item.kod) }}"
+                class="btn btn-primary">Назад</a>
             {% endif %}
             {% if next_item %}
-                <a href="{{ url_for('nomenklatura.detail_nomenclature', kod=next_item.kod) }}">Далее</a>
+            <a href="{{ url_for('nomenklatura.detail_nomenclature', kod=next_item.kod) }}"
+                class="btn btn-primary">Далее</a>
             {% endif %}
-        </div>
-
-        <!-- Блок статистики -->
-        <div class="block">
-            <div class="header">Статистика</div>
-            <div class="row"><span class="label">ABC:</span> {{ stats.ABC }}</div>
-            <div class="row"><span class="label">XYZ:</span> {{ stats.XYZ }}</div>
-            <div class="row"><span class="label">Продажи за 12 месяцев:</span> {{ stats.total_sales_last_12_months }}</div>
-            <div class="row"><span class="label">Продажи за 3 месяца:</span> {{ stats.total_sales_last_3_months }}</div>
-            <div class="row"><span class="label">Продажи два года назад:</span> {{ stats.sum_sales_two_years_ago }}</div>
-            <div class="row"><span class="label">Продажи три года назад:</span> {{ stats.sum_sales_three_years_ago }}</div>
-            <div class="row"><span class="label">Средние продажи за 12 месяцев:</span> {{ stats.mean_sales_last_12_months }}</div>
-            <div class="row"><span class="label">Месяцев без продаж:</span> {{ stats.months_without_sales }}</div>
-            <div class="row"><span class="label">Месяцы с момента последней продажи:</span> {{ stats.months_since_last_sale }}</div>
-            <div class="min-stock"><strong>Минимальный остаток:</strong> {{ stats.min_stock }}</div>
-        </div>
-
-        <!-- Блок графика -->
-        <div class="block graph-container">
-            <div class="header">Сводный график продаж и закупок</div>
-            <img src="data:image/png;base64,{{ graph_url }}" alt="Сводный график продаж и закупок">
-        </div>
-        
-
-        <!-- Блок с информацией об остатке и ценах -->
-        <div class="block">
-            <div class="header">Информация об остатке и ценах</div>
-            <table>
-                <tr>
-                    <th>Месяц</th>
-                    <th>Остаток</th>
-                    <th>Цена</th>
-                </tr>
-                {% for price, balance, month in zip(prices, balances, months) %}
-                <tr>
-                    <td>{{ month }}</td>
-                    <td>{{ balance }}</td>
-                    <td>{{ price }}</td>
-                </tr>
-                {% endfor %}
-            </table>
-        </div>
-
-
-
-        <!-- Добавляем ссылку для возврата к списку номенклатуры -->
-        <br><br>
-        <div class="navigation-buttons">
-            <a href="{{ url_for('nomenklatura.list_nomenclature') }}">Назад к списку</a>
         </div>
     </div>
 </body>
+
 </html>
