@@ -104,9 +104,9 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
         if pd.isna(row['mean_sales_last_12_months']) or pd.isna(row['std_sales_last_12_months']):
             return 0  # Return 0 if no data for calculations
 
-        if row['ABC'] in ['A', 'A1']:
+        if row['abc'] in ['A', 'A1']:
             return round((row['mean_sales_last_12_months'] * 1 + row['std_sales_last_12_months']) + 0.49)
-        elif row['ABC'] == 'B':
+        elif row['abc'] == 'B':
             return round((row['mean_sales_last_12_months'] * 1 + row['std_sales_last_12_months']) + 0.49)
         elif row['mean_sales_last_12_months'] == 0:
             return 1

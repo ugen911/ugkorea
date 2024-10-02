@@ -226,8 +226,8 @@ def perform_abc_xyz_analysis(engine):
 
     # Объединение ABC и XYZ анализов в один DataFrame
     abc_xyz_analysis = pd.DataFrame({
-        'ABC': abc_labels,
-        'XYZ': xyz_labels
+        'abc': abc_labels,
+        'xyz': xyz_labels
     }, index=total_summa_sorted.index)
 
     # Проверка и заполнение категорий для товаров, которые были проданы хотя бы раз
