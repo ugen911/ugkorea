@@ -9,7 +9,7 @@ engine = get_db_engine()
 # Загрузка таблиц из базы данных
 nomenklaturaold_df = pd.read_sql("SELECT kod FROM nomenklaturaold", engine)
 full_statistic_df = pd.read_sql(
-    "SELECT kod, months_without_sales, std_sales_last_12_months, mean_sales_last_12_months, total_sales_last_12_months, min_stock FROM full_statistic",
+    "SELECT kod, months_without_sales, std_sales_last_12_months, mean_sales_last_12_months, total_sales_last_12_months, min_stock, abc FROM full_statistic",
     engine,
 )
 priceendmonth_df = pd.read_sql("SELECT * FROM priceendmonth", engine)
@@ -30,10 +30,10 @@ stockendmonth_df.rename(columns={"nomenklaturakod": "kod"}, inplace=True)
 # Функция для создания сводной таблицы за последние 20 месяцев и изменения названий колонок
 def create_pivot_table(df, kod_col, date_col, value_col, prefix):
     df[date_col] = pd.to_datetime(df[date_col])
-    latest_month = df[date_col].max()
-    # Создаем список из последних 20 месяцев, исключая текущий
+    latest_month = pd.to_datetime("now")  # Текущий месяц
+    # Создаем список из последних 20 месяцев, включая предыдущий месяц и уходя назад
     last_20_months = (
-        pd.date_range(end=latest_month - pd.DateOffset(months=1), periods=20, freq="ME")
+        pd.date_range(end=latest_month, periods=20, freq="ME")
         .strftime("%Y-%m")
         .tolist()
     )
@@ -57,13 +57,18 @@ def create_pivot_table(df, kod_col, date_col, value_col, prefix):
     # Упорядочиваем колонки по дате
     pivot_df = pivot_df[last_20_months]
 
-    # Переименовываем колонки в соответствии с правилами
-    new_columns = {
-        last_20_months[
-            i
-        ]: f"{prefix} {'oldest' if i == 19 else 'prev' if i == 0 else f'prev-{i}'}"
-        for i in range(20)
-    }
+    # Переименовываем колонки в соответствии с правилами и добавляем отладочную печать
+    new_columns = {}
+    for i in range(20):
+        new_name = (
+            f"{prefix} {'prev' if i == 0 else f'prev-{i}' if i < 19 else 'oldest'}"
+        )
+        new_columns[last_20_months[-(i + 1)]] = new_name  # Используем обратный порядок
+        # Отладочная печать
+        print(
+            f"Отладка: Актуальный месяц и год: {latest_month.strftime('%Y-%m')}. Колонка '{new_name}' обозначает месяц и год: {last_20_months[-(i + 1)]}"
+        )
+
     pivot_df.rename(columns=new_columns, inplace=True)
 
     return pivot_df
