@@ -1,4 +1,3 @@
-
 import logging
 from ugkorea.statistic.loaddata import get_final_data, load_and_process_data, perform_abc_xyz_analysis
 from ugkorea.db.database import get_db_engine
@@ -94,7 +93,7 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
 
     # Convert the results into a DataFrame
     sales_metrics = pd.DataFrame(metrics)
-    
+
     # Merge with union_data
     print("Объединение данных union_data с рассчитанными метриками...")
     union_data = union_data.merge(sales_metrics, on='kod', how='left')
@@ -116,6 +115,52 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     print("Вычисление начальных значений min_stock...")
     union_data['min_stock'] = union_data.apply(calculate_min_stock, axis=1)
 
+
+    # Calculate 'min_stock' for each gruppa_analogov based on the same logic
+    def calculate_min_stock_for_group(gruppa_analogov, union_data, sales_data):
+        # Filter union_data for the given gruppa_analogov
+        group_data = union_data[union_data["gruppa_analogov"] == gruppa_analogov]
+
+        # Use sales_data to calculate mean and std only for this gruppa_analogov
+        sales_group_data = sales_data[sales_data["kod"].isin(group_data["kod"])].copy()
+
+        # Fill missing values in 'total_sales' and 'balance' with 0
+        sales_group_data["total_sales_filled"] = sales_group_data["total_sales"].fillna(0)
+        sales_group_data["balance_filled"] = sales_group_data["balance"].fillna(0)
+
+        mean_sales_last_12_months = (
+            sales_group_data["total_sales_filled"].sum() / sales_group_data.shape[0]
+            if sales_group_data.shape[0] > 0
+            else 0
+        )
+        std_sales_last_12_months = (
+            sales_group_data["total_sales_filled"].std()
+            if sales_group_data.shape[0] > 0
+            else 0
+        )
+
+        if pd.isna(mean_sales_last_12_months) or pd.isna(std_sales_last_12_months):
+            return 0
+
+        if group_data["abc"].iloc[0] in ["A", "A1"]:
+            return round((mean_sales_last_12_months * 1 + std_sales_last_12_months) + 0.49)
+        elif group_data["abc"].iloc[0] == "B":
+            return round((mean_sales_last_12_months * 1 + std_sales_last_12_months) + 0.49)
+        elif mean_sales_last_12_months == 0:
+            return 1
+        else:
+            return round((mean_sales_last_12_months + std_sales_last_12_months) + 0.49)
+
+    print("Вычисление начальных значений min_stock для каждой gruppa_analogov...")
+    # Get unique gruppa_analogov from union_data and calculate min_stock for each
+    unique_groups = union_data['gruppa_analogov'].unique()
+    min_stock_group_values = {
+        group: calculate_min_stock_for_group(group, union_data, sales_data) for group in unique_groups
+    }
+
+    # Apply calculated min_stock_group values to the union_data
+    union_data['min_stock_group'] = union_data['gruppa_analogov'].map(min_stock_group_values)    
+
     # Adjust 'min_stock' based on sales data from the previous year
     def adjust_min_stock(row):
         current_month = current_period.month
@@ -128,7 +173,7 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
             (sales_data['kod'] == row['kod']) &
             (sales_data['year_month'].isin([last_year_same_month, last_year_month_minus_1, last_year_month_plus_1]))
         ]['total_sales'].max()
-        
+
         if pd.notna(relevant_sales) and relevant_sales > row['min_stock']:
             return relevant_sales
         return row['min_stock']
@@ -166,16 +211,16 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
 
     def adjust_min_stock_for_old_creation_date_and_no_sales(row):
         datasozdanija_date = pd.to_datetime(row['datasozdanija'], format='%d.%m.%Y %H:%M:%S', errors='coerce')
-    
+
         # Если datasozdanija пустая, считаем, что она старше 2 месяцев
         is_old_creation_date = pd.isna(datasozdanija_date) or datasozdanija_date <= (current_period - 2).start_time
 
         # Проверяем условия: datasozdanija старше чем 2 месяца (или пустая), months_since_last_sale больше 12 и mean_sales_last_12_months равен 0 или None
         if is_old_creation_date and (row['months_since_last_sale'] > 12) and (pd.isna(row['mean_sales_last_12_months']) or row['mean_sales_last_12_months'] == 0):
-        
+
             # Найти максимальное значение min_stock для товаров с такой же группой аналогов
             max_min_stock = union_data[union_data['gruppa_analogov'] == row['gruppa_analogov']]['min_stock'].max()
-        
+
             if max_min_stock > row['min_stock']:
                 return max_min_stock
         return row['min_stock']
@@ -185,7 +230,6 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
 
     print("Завершено!")
     return union_data
-
 
 
 if __name__ == "__main__":
