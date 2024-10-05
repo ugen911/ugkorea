@@ -218,20 +218,6 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     print("Корректировка min_stock на основе данных о продажах за прошлый год...")
     union_data['min_stock'] = union_data.apply(adjust_min_stock, axis=1)
 
-    # Further adjust 'min_stock' if 'datasozdanija' is in the current or previous month
-    def adjust_min_stock_for_creation_date(row):
-        datasozdanija_date = pd.to_datetime(row['datasozdanija'], format='%d.%m.%Y %H:%M:%S', errors='coerce')
-        if datasozdanija_date is not pd.NaT:
-            creation_period = pd.Period(datasozdanija_date.strftime('%Y-%m'), freq='M')
-            if creation_period in [current_period, current_period - 1]:
-                # Find the maximum 'min_stock' for the same 'gruppa_analogov'
-                max_min_stock = union_data[union_data['gruppa_analogov'] == row['gruppa_analogov']]['min_stock'].max()
-                if max_min_stock > row['min_stock']:
-                    return max_min_stock
-        return row['min_stock']
-
-    print("Корректировка min_stock на основе даты создания...")
-    union_data['min_stock'] = union_data.apply(adjust_min_stock_for_creation_date, axis=1)
 
     # Adjust 'min_stock' to be even if certain phrases are in 'naimenovanie'
     def make_min_stock_even(row):
