@@ -3,6 +3,7 @@ cd /d %~dp0
 call venv\Scripts\activate
 
 python -m api.bergapi
+python -m reglament_task.deliveryminprice
 python -m accessold.dataforrepricing
 python -m from_folder_to_df.create_files_to_access
 echo bergapi completed.
