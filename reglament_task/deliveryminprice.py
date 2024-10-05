@@ -162,9 +162,23 @@ for table_name, df in all_data.items():
         # Сохраняем результат
         results[table_name] = filtered_df
 
-# Показать информацию о совпадениях
-for table_name, data in results.items():
-    print(f"Совпадающие данные из таблицы {table_name}:")
-    print(data.head())
+# Шаг 5: Объединяем все датафреймы из results в один
+combined_df = pd.concat(results.values(), ignore_index=True)
+
+
+# Шаг 6: Фильтрация, чтобы оставить только строки с минимальной ценой для каждого kod
+def get_min_price_group(df):
+    # Сортировка по цене, количеству и выбор первой строки для каждого kod
+    df_sorted = df.sort_values(by=["цена", "количество"], ascending=[True, False])
+    return df_sorted.groupby("kod").first().reset_index()
+
+
+# Применение фильтрации к объединенному датафрейму
+final_df = get_min_price_group(combined_df)
+
+# Показать информацию о финальном объединенном датафрейме
+print("Итоговый объединенный датафрейм:")
+print(final_df.head())
+final_df.to_csv("final_df.csv")
 
 print("Завершено выполнение скрипта.")
