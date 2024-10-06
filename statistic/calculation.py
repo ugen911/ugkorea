@@ -54,6 +54,22 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     # Отладочная информация
     print("Начинаем расчет метрик продаж...")
 
+    # Заполняем значения price текущего месяца из tsenarozn, если они пустые
+    def fill_current_month_price(row):
+        if (
+            pd.isna(row["price"])
+            and row["year_month"] == current_period
+            and pd.notna(row["total_sales"])
+            and pd.notna(row["balance"])
+        ):
+            kod = row["kod"]
+            # Получаем значение tsenarozn из union_data для текущего kod
+            price_value = union_data.loc[union_data["kod"] == kod, "tsenarozn"].values
+            return price_value[0] if len(price_value) > 0 else row["price"]
+        return row["price"]
+    # Заполнение значений price для текущего месяца
+    sales_data["price"] = sales_data.apply(fill_current_month_price, axis=1)
+    
     # Calculate relevant periods directly as Period objects
     twelve_months_ago = current_period - 12
     three_months_ago = current_period - 3
@@ -152,7 +168,6 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     print("Вычисление начальных значений min_stock...")
     union_data['min_stock'] = union_data.apply(calculate_min_stock, axis=1)
 
-
     # Calculate 'min_stock' for each gruppa_analogov based on the same logic
     def calculate_min_stock_for_group(gruppa_analogov, union_data, sales_data):
         # Filter union_data for the given gruppa_analogov
@@ -218,7 +233,6 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     print("Корректировка min_stock на основе данных о продажах за прошлый год...")
     union_data['min_stock'] = union_data.apply(adjust_min_stock, axis=1)
 
-
     # Adjust 'min_stock' to be even if certain phrases are in 'naimenovanie'
     def make_min_stock_even(row):
         phrases = ["пружина амортизатора", "пружина задней подвески", "rh/lh", "lh/rh", "fr/rr", 
@@ -239,7 +253,7 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
 if __name__ == "__main__":
     engine = get_db_engine()
 
-    priceendmonth, stockendmonth, suppliespivot, deliveryminprice = load_additional_data(engine)
+    _, _, _, deliveryminprice = load_additional_data(engine)
 
     # Загрузка данных
     sales_data, nomenklatura_ml = get_final_data(engine)
