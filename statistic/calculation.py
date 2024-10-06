@@ -46,10 +46,11 @@ def load_additional_data(engine):
     return priceendmonth, stockendmonth, suppliespivot, deliveryminprice
 
 
-def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) -> pd.DataFrame:
+def calculate_sales_metrics(
+    sales_data: pd.DataFrame, union_data: pd.DataFrame, deliveryminprice: pd.DataFrame) -> pd.DataFrame:
     # Use the current date as the reference date
     reference_date = datetime.now()
-    current_period = pd.Period(reference_date.strftime('%Y-%m'), freq='M')
+    current_period = pd.Period(reference_date.strftime("%Y-%m"), freq="M")
 
     # Отладочная информация
     print("Начинаем расчет метрик продаж...")
@@ -105,6 +106,17 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
         total_sales_last_12 = group[(group['year_month'] > twelve_months_ago) & (group['year_month'] <= current_period)]['total_sales_filled'].sum()
         total_sales_last_3 = group[(group['year_month'] > three_months_ago) & (group['year_month'] <= current_period)]['total_sales_filled'].sum()
 
+        # Добавление максимального и минимального значений продаж за последние 12 месяцев
+        max_sales_last_12 = group[
+            (group["year_month"] > twelve_months_ago)
+            & (group["year_month"] <= current_period)
+        ]["total_sales_filled"].max()
+        min_sales_last_12 = group[
+            (group["year_month"] > twelve_months_ago)
+            & (group["year_month"] <= current_period)
+            & (group["total_sales_filled"] > 0)
+        ]["total_sales_filled"].min()
+
         sum_sales_last_year = group[group['year_month'].isin(periods_last_year)]['total_sales_filled'].sum()
         sum_sales_two_years_ago = group[group['year_month'].isin(periods_two_years_ago)]['total_sales_filled'].sum()
         sum_sales_three_years_ago = group[group['year_month'].isin(periods_three_years_ago)]['total_sales_filled'].sum()
@@ -142,18 +154,22 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
             # If no sales were found, set months_since_last_sale to the total number of months in the observation
             months_since_last_sale = group['year_month'].nunique()
 
-        metrics.append({
-            'kod': kod,
-            'total_sales_last_12_months': total_sales_last_12,
-            'total_sales_last_3_months': total_sales_last_3,
-            'sum_sales_last_year': sum_sales_last_year,
-            'sum_sales_two_years_ago': sum_sales_two_years_ago,
-            'sum_sales_three_years_ago': sum_sales_three_years_ago,
-            'mean_sales_last_12_months': mean_sales,
-            'std_sales_last_12_months': std_sales,
-            'months_without_sales': months_without_sales,
-            'months_since_last_sale': months_since_last_sale
-        })
+        metrics.append(
+            {
+                "kod": kod,
+                "total_sales_last_12_months": total_sales_last_12,
+                "total_sales_last_3_months": total_sales_last_3,
+                "sum_sales_last_year": sum_sales_last_year,
+                "sum_sales_two_years_ago": sum_sales_two_years_ago,
+                "sum_sales_three_years_ago": sum_sales_three_years_ago,
+                "mean_sales_last_12_months": mean_sales,
+                "std_sales_last_12_months": std_sales,
+                "months_without_sales": months_without_sales,
+                "months_since_last_sale": months_since_last_sale,
+                "max_sales_last_12_months": max_sales_last_12,
+                "min_sales_last_12_months": min_sales_last_12,
+            }
+        )
 
     # Convert the results into a DataFrame
     sales_metrics = pd.DataFrame(metrics)
@@ -224,6 +240,13 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     # Apply calculated min_stock_group values to the union_data
     union_data['min_stock_group'] = union_data['gruppa_analogov'].map(min_stock_group_values)    
 
+    # Присоединение таблицы deliveryminprice по полю kod
+    print("Присоединение таблицы deliveryminprice...")
+    deliveryminprice = deliveryminprice.rename(columns={"price": "deliveryprice"})
+    union_data = union_data.merge(
+        deliveryminprice[["kod", "deliveryprice"]], on="kod", how="left"
+    )
+
     # Adjust 'min_stock' based on sales data from the previous year
     def adjust_min_stock(row):
         current_month = current_period.month
@@ -257,6 +280,23 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     print("Корректировка min_stock на четное значение для определенных наименований...")
     union_data['min_stock'] = union_data.apply(make_min_stock_even, axis=1)
 
+
+    def adjust_min_stock_based_on_margin(row):
+        if pd.isna(row['deliveryprice']) or pd.isna(row['tsenarozn']):
+            margin = None
+        else:
+            margin = (row['tsenarozn'] - row['deliveryprice']) / row['deliveryprice'] * 100
+
+        if pd.isna(margin) or margin < 30:
+            return row['min_sales_last_12_months']
+        elif margin > 70:
+            return row['max_sales_last_12_months']
+        else:
+            return row['min_stock']
+
+    print("Корректировка min_stock на основе наценки и наличия цены поставщика...")
+    union_data['min_stock'] = union_data.apply(adjust_min_stock_based_on_margin, axis=1)
+
     print("Завершено!")
     return union_data
 
@@ -276,9 +316,10 @@ if __name__ == "__main__":
     union_data = pd.merge(merged_data, abc_xyz_analysis, on='kod', how='left')
 
     # Вычисление метрик продаж
-    union_data = calculate_sales_metrics(sales_data, union_data)
+    union_data = calculate_sales_metrics(sales_data, union_data, deliveryminprice)
 
-    # Сохранение данных в базу данных
+    # Сохранение данных в базу данных,
+    
     print("Сохранение результатов в базу данных...")
     union_data.to_sql('full_statistic', con=engine, if_exists='replace', index=False)
     print("Данные успешно сохранены в таблицу 'full_statistic'.")
