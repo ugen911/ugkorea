@@ -289,7 +289,7 @@ def calculate_sales_metrics(
             margin = (row['tsenarozn'] - row['deliveryprice']) / row['deliveryprice'] * 100
 
         # Проверка условия для корректировки на минимальное значение
-        if (pd.isna(margin) or (margin < 30 and row['tsenarozn'] <= 10000)) and pd.notna(row['min_sales_last_12_months']) and row['min_sales_last_12_months'] > 0:
+        if (pd.isna(margin) or (margin < 36 and row['tsenarozn'] <= 10000)) and pd.notna(row['min_sales_last_12_months']) and row['min_sales_last_12_months'] > 0:
             return row['min_sales_last_12_months']
     
         # Проверка условия для корректировки на максимальное значение, только если margin не NaN
