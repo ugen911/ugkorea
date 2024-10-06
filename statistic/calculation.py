@@ -55,7 +55,9 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
     print("Начинаем расчет метрик продаж...")
 
     # Заполняем значения price текущего месяца из tsenarozn, если они пустые
-    def fill_current_month_price(row):
+    # Функция для заполнения текущего месяца значениями price и balance
+    def fill_current_month_data(row):
+        # Проверка условий для заполнения значения 'price'
         if (
             pd.isna(row["price"])
             and row["year_month"] == current_period
@@ -65,11 +67,20 @@ def calculate_sales_metrics(sales_data: pd.DataFrame, union_data: pd.DataFrame) 
             kod = row["kod"]
             # Получаем значение tsenarozn из union_data для текущего kod
             price_value = union_data.loc[union_data["kod"] == kod, "tsenarozn"].values
-            return price_value[0] if len(price_value) > 0 else row["price"]
-        return row["price"]
-    # Заполнение значений price для текущего месяца
-    sales_data["price"] = sales_data.apply(fill_current_month_price, axis=1)
-    
+            row["price"] = price_value[0] if len(price_value) > 0 else row["price"]
+
+        # Проверка условий для заполнения значения 'balance'
+        if row["year_month"] == current_period:
+            kod = row["kod"]
+            # Получаем значение osnsklad из union_data для текущего kod
+            balance_value = union_data.loc[union_data["kod"] == kod, "osnsklad"].values
+            if len(balance_value) > 0 and balance_value[0] > 0:
+                row["balance"] = balance_value[0]
+
+        return row
+
+    sales_data = sales_data.apply(fill_current_month_data, axis=1)
+
     # Calculate relevant periods directly as Period objects
     twelve_months_ago = current_period - 12
     three_months_ago = current_period - 3
