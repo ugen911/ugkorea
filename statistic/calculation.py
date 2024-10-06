@@ -282,17 +282,25 @@ def calculate_sales_metrics(
 
 
     def adjust_min_stock_based_on_margin(row):
+        # Рассчитываем наценку, если цены присутствуют
         if pd.isna(row['deliveryprice']) or pd.isna(row['tsenarozn']):
             margin = None
         else:
             margin = (row['tsenarozn'] - row['deliveryprice']) / row['deliveryprice'] * 100
 
-        if pd.isna(margin) or margin < 30:
+        # Проверка условия для корректировки на минимальное значение
+        if (pd.isna(margin) or (margin < 30 and row['tsenarozn'] <= 10000)) and pd.notna(row['min_sales_last_12_months']) and row['min_sales_last_12_months'] > 0:
             return row['min_sales_last_12_months']
-        elif margin > 70:
+    
+        # Проверка условия для корректировки на максимальное значение, только если margin не NaN
+        elif pd.notna(margin) and margin > 70 and pd.notna(row['max_sales_last_12_months']) and row['max_sales_last_12_months'] > 0:
             return row['max_sales_last_12_months']
+    
+        # Если условия не выполнены, возвращаем текущее значение min_stock
         else:
             return row['min_stock']
+
+
 
     print("Корректировка min_stock на основе наценки и наличия цены поставщика...")
     union_data['min_stock'] = union_data.apply(adjust_min_stock_based_on_margin, axis=1)
