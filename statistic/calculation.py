@@ -238,7 +238,85 @@ def calculate_sales_metrics(
     }
 
     # Apply calculated min_stock_group values to the union_data
-    union_data['min_stock_group'] = union_data['gruppa_analogov'].map(min_stock_group_values)    
+    union_data['min_stock_group'] = union_data['gruppa_analogov'].map(min_stock_group_values)
+
+    def recalculate_for_group_analogues(union_data, sales_data):
+        # Шаг 1: Выбираем группы аналогов с 2 и более позициями
+        group_counts = union_data.groupby('gruppa_analogov')['kod'].count()
+        valid_groups = group_counts[group_counts >= 2].index
+
+        # Фильтруем данные по валидным группам
+        union_data_filtered = union_data[union_data['gruppa_analogov'].isin(valid_groups)].copy()
+
+        # Шаг 2: Сложить min_stock для всех позиций одной группы аналогов и сравнить с min_stock_group
+        group_min_stock_sum = union_data_filtered.groupby('gruppa_analogov')['min_stock'].sum().reset_index()
+        group_min_stock_sum = group_min_stock_sum[group_min_stock_sum['min_stock'] >= 5]
+
+        union_data_filtered = pd.merge(union_data_filtered, group_min_stock_sum, on='gruppa_analogov', how='inner', suffixes=('', '_sum'))
+
+        # Шаг 3: Фильтруем только те группы, у которых сумма min_stock больше на 30% чем min_stock_group
+        union_data_filtered['min_stock_diff'] = (union_data_filtered['min_stock_sum'] - union_data_filtered['min_stock_group']) / union_data_filtered['min_stock_group'] * 100
+        kods_for_recalculation = union_data_filtered[union_data_filtered['min_stock_diff'] > 30]['kod'].unique()
+
+        print(f"Найдено {len(kods_for_recalculation)} kod для перерасчетов.")
+
+        # Шаг 4: Пересчет mean_sales_last_12_months и std_sales_last_12_months для выбранных kod
+        def recalculate_sales_metrics_for_kod(group, sales_data):
+            # Получаем список kod из группы аналогов, которые в наличии
+            kod_in_stock = group[group['osnsklad'] > 0]['kod'].unique()
+
+            # Если нет позиций в наличии, пропускаем эту группу
+            if len(kod_in_stock) == 0:
+                return union_data
+
+            # Ищем месяцы, где были продажи или баланс > 0 для каждого kod
+            def find_valid_months(kod):
+                valid_months = sales_data[(sales_data['kod'] == kod) &
+                                      ((sales_data['balance'] > 0) | (sales_data['total_sales'] > 0))]['year_month'].unique()
+                return valid_months
+
+            # Находим месяцы, где позиции были в наличии
+            kod_to_valid_months = {kod: find_valid_months(kod) for kod in kod_in_stock}
+
+            # Находим общие месяцы, где несколько kod были в наличии
+            common_months = set(kod_to_valid_months[kod_in_stock[0]])  # Начинаем с первого kod
+            for kod in kod_in_stock[1:]:
+                common_months.intersection_update(kod_to_valid_months[kod])
+
+            # Если не найдено общих месяцев, используем текущий месяц
+            if len(common_months) == 0:
+                common_months = [current_period]
+
+            # Фильтруем sales_data по общим месяцам
+            sales_filtered = sales_data[(sales_data['kod'].isin(kod_in_stock)) &
+                                        (sales_data['year_month'].isin(common_months))]
+
+            # Пересчет метрик для каждого kod
+            for kod in kod_in_stock:
+                kod_sales_data = sales_filtered[sales_filtered['kod'] == kod]
+                mean_sales = kod_sales_data['total_sales'].mean() if not kod_sales_data.empty else 0
+                std_sales = kod_sales_data['total_sales'].std() if not kod_sales_data.empty else 0
+
+                # Обновляем значения в union_data
+                union_data.loc[union_data['kod'] == kod, 'mean_sales_last_12_months'] = mean_sales
+                union_data.loc[union_data['kod'] == kod, 'std_sales_last_12_months'] = std_sales
+
+            return union_data
+
+        for gruppa_analogov in union_data_filtered['gruppa_analogov'].unique():
+            group = union_data_filtered[union_data_filtered['gruppa_analogov'] == gruppa_analogov]
+            union_data = recalculate_sales_metrics_for_kod(group, sales_data)
+
+        # Теперь вместо recalculate_min_stock_after_metrics используем calculate_min_stock
+        union_data.loc[union_data['kod'].isin(kods_for_recalculation), 'min_stock'] = \
+            union_data.loc[union_data['kod'].isin(kods_for_recalculation)].apply(calculate_min_stock, axis=1)
+
+        print("Перерасчет завершен.")
+
+        return union_data
+
+    print("Пересчитываем средние продажи и отклонения...")
+    union_data = recalculate_for_group_analogues(union_data, sales_data)
 
     # Присоединение таблицы deliveryminprice по полю kod
     print("Присоединение таблицы deliveryminprice...")
@@ -246,6 +324,36 @@ def calculate_sales_metrics(
     union_data = union_data.merge(
         deliveryminprice[["kod", "deliveryprice"]], on="kod", how="left"
     )
+
+    # Adjust 'min_stock' to be even if certain phrases are in 'naimenovanie'
+    def make_min_stock_even(row):
+        phrases = [
+            "пружина амортизатора",
+            "пружина задней подвески",
+            "rh/lh",
+            "lh/rh",
+            "fr/rr",
+            "втулка поперечного стабилизатора",
+            "рем. ком. суппорта",
+            "подшипник опоры стойки",
+            "опора задней стойки",
+            "опора передней стойки",
+        ]
+        naimenovanie_lower = row["naimenovanie"].lower()  # Приводим naimenovanie к нижнему регистру
+
+        # Проверка на определенные фразы и приведение к четному значению
+        if any(phrase in naimenovanie_lower for phrase in phrases) and row["min_stock"] % 2 != 0:
+            return row["min_stock"] + 1  # Сделать четным, добавив 1
+
+        # Проверка для строк, начинающихся со "Свеча зажигания" или "Свеча накала"
+        if naimenovanie_lower.startswith("свеча зажигания") or naimenovanie_lower.startswith("свеча накала"):
+            if row["min_stock"] % 4 != 0:
+                return (row["min_stock"] // 4 + 1) * 4  # Округление до кратного 4 в большую сторону
+
+        return row["min_stock"]
+
+    print("Корректировка min_stock на четное значение для определенных наименований...")
+    union_data["min_stock"] = union_data.apply(make_min_stock_even, axis=1)
 
     # Adjust 'min_stock' based on sales data from the previous year
     def adjust_min_stock(row):
@@ -267,20 +375,6 @@ def calculate_sales_metrics(
     print("Корректировка min_stock на основе данных о продажах за прошлый год...")
     union_data['min_stock'] = union_data.apply(adjust_min_stock, axis=1)
 
-    # Adjust 'min_stock' to be even if certain phrases are in 'naimenovanie'
-    def make_min_stock_even(row):
-        phrases = ["пружина амортизатора", "пружина задней подвески", "rh/lh", "lh/rh", "fr/rr", 
-                   "втулка поперечного стабилизатора", "рем. ком. суппорта", "подшипник опоры стойки", 
-                   "опора задней стойки", "опора передней стойки"]
-        naimenovanie_lower = row['naimenovanie'].lower()  # Приводим naimenovanie к нижнему регистру
-        if any(phrase in naimenovanie_lower for phrase in phrases) and row['min_stock'] % 2 != 0:
-            return row['min_stock'] + 1  # Сделать четным, добавив 1
-        return row['min_stock']
-
-    print("Корректировка min_stock на четное значение для определенных наименований...")
-    union_data['min_stock'] = union_data.apply(make_min_stock_even, axis=1)
-
-
     def adjust_min_stock_based_on_margin(row):
         # Рассчитываем наценку, если цены присутствуют
         if pd.isna(row['deliveryprice']) or pd.isna(row['tsenarozn']):
@@ -291,19 +385,45 @@ def calculate_sales_metrics(
         # Проверка условия для корректировки на минимальное значение
         if (pd.isna(margin) or (margin < 36 and row['tsenarozn'] <= 10000)) and pd.notna(row['min_sales_last_12_months']) and row['min_sales_last_12_months'] > 0:
             return row['min_sales_last_12_months']
-    
+
         # Проверка условия для корректировки на максимальное значение, только если margin не NaN
         elif pd.notna(margin) and margin > 70 and pd.notna(row['max_sales_last_12_months']) and row['max_sales_last_12_months'] > 0:
             return row['max_sales_last_12_months']
-    
+
         # Если условия не выполнены, возвращаем текущее значение min_stock
         else:
             return row['min_stock']
 
-
-
     print("Корректировка min_stock на основе наценки и наличия цены поставщика...")
     union_data['min_stock'] = union_data.apply(adjust_min_stock_based_on_margin, axis=1)
+
+    def correct_min_stock_based_on_balance_and_sales(union_data, sales_data):
+        # Текущий период
+        current_period = pd.Period(datetime.now().strftime("%Y-%m"), freq="M")
+        twelve_months_ago = current_period - 12
+
+        # Проходим по каждой позиции для проверки условий
+        def check_and_correct(row):
+            # Получаем данные за последний год для конкретного kod
+            kod_sales_data = sales_data[(sales_data["kod"] == row["kod"]) & 
+                                    (sales_data["year_month"] > twelve_months_ago) & 
+                                    (sales_data["year_month"] <= current_period)]
+
+            # Условие: balance всегда > 0 и продажи были в одном месяце (неважно, сколько продали)
+            if (kod_sales_data["balance"] > 0).all() and kod_sales_data["total_sales"].gt(0).sum() == 1:
+                row["min_stock"] = 1  # Устанавливаем min_stock в 1
+
+            return row
+
+        # Применяем корректировку по каждому ряду
+        union_data = union_data.apply(check_and_correct, axis=1)
+
+        # Применяем корректировку make_min_stock_even для этих позиций
+        union_data["min_stock"] = union_data.apply(make_min_stock_even, axis=1)
+
+        return union_data
+
+    union_data = correct_min_stock_based_on_balance_and_sales(union_data, sales_data)
 
     print("Завершено!")
     return union_data
