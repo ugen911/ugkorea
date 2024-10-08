@@ -2,8 +2,8 @@ import pandas as pd
 import re
 from ugkorea.db.database import get_db_engine
 from datetime import datetime, timedelta
-from ugkorea.reglament_task.dicts import replacement_dict 
-
+from ugkorea.reglament_task.dicts import replacement_dict
+from sqlalchemy import text
 
 # Определение функции
 def process_data():
@@ -38,15 +38,9 @@ def process_data():
     def clean_string(s):
         return re.sub(r"[\s.-]", "", str(s)).lower()
 
-    full_statistic_df["artikul_clean"] = full_statistic_df["artikul"].apply(
-        clean_string
-    )
-    full_statistic_df["proizvoditel_clean"] = full_statistic_df["proizvoditel"].apply(
-        clean_string
-    )
-    full_statistic_df["proizvoditel"] = full_statistic_df["proizvoditel"].replace(
-        replacement_dict, regex=True
-    )
+    full_statistic_df["artikul_clean"] = full_statistic_df["artikul"].apply(clean_string)
+    full_statistic_df["proizvoditel_clean"] = full_statistic_df["proizvoditel"].apply(clean_string)
+    full_statistic_df["proizvoditel"] = full_statistic_df["proizvoditel"].replace(replacement_dict, regex=True)
 
     # Получаем список таблиц в схеме prices
     tables_query = f"""
@@ -91,9 +85,7 @@ def process_data():
                 data = pd.DataFrame(columns=columns)
 
             if "производитель" in data.columns:
-                data["производитель"] = data["производитель"].replace(
-                    replacement_dict, regex=True
-                )
+                data["производитель"] = data["производитель"].replace(replacement_dict, regex=True)
 
             all_data[table] = data
 
@@ -113,10 +105,11 @@ def process_data():
 
     for table_name, df in all_data.items():
         if (
-            "артикул" in df.columns
-            and "производитель" in df.columns
-            and "количество" in df.columns
+            "артикул" in df.columns and
+            "производитель" in df.columns and
+            "количество" in df.columns
         ):
+
             df["artikul_clean"] = df["артикул"].apply(clean_string)
             df["proizvoditel_clean"] = df["производитель"].apply(clean_string)
 
@@ -140,11 +133,11 @@ def process_data():
 
     final_df = get_min_price_group(combined_df)
 
-    # Шаг 7: Переименование колонок и отбор необходимых
+    # Шаг 7: Переименование колонок и отбор необходимых, включая proizvoditel_clean
     final_df = final_df.rename(
         columns={"количество": "stock", "цена": "price", "поставщик": "sklad"}
     )
-    final_df = final_df[["kod", "stock", "price", "sklad"]]
+    final_df = final_df[["kod", "stock", "price", "sklad", "proizvoditel_clean"]]
 
     return final_df
 
@@ -188,27 +181,89 @@ def load_bergapi_data():
         return pd.DataFrame(columns=["kod", "price", "stock", "sklad"])
 
 
+
+def manage_deliverypriceintime(engine):
+    # Загрузка данных из deliverypriceintime
+    current_date = datetime.now()
+    one_year_ago = current_date - timedelta(days=365)
+
+    # Удаляем записи старше одного года
+    delete_query = text(
+        f"""
+        DELETE FROM analitic.deliverypriceintime
+        WHERE date_processed < '{one_year_ago.strftime('%Y-%m-%d')}';
+    """
+    )
+    with engine.connect() as conn:
+        conn.execute(delete_query)  # Используем text() для выполнения SQL-запроса
+
+    # Проверяем, есть ли данные за текущую дату
+    check_query = f"""
+        SELECT 1 FROM analitic.deliverypriceintime
+        WHERE date_processed = '{current_date.strftime('%Y-%m-%d')}'
+        LIMIT 1;
+    """
+    existing_data = pd.read_sql(check_query, engine)
+
+    # Если данных нет, продолжаем добавление
+    if existing_data.empty:
+        print("Данные за текущую дату отсутствуют. Добавляем данные.")
+        return False
+    else:
+        print("Данные за текущую дату уже существуют. Добавление не требуется.")
+        return True
+
+
 def main():
     # Получаем данные из функций
     bergapi_data = load_bergapi_data()
     process_data_result = process_data()
 
-    # Конкатенируем данные с условием: если kod есть в process_data_result, то берем только его данные
-    # Если kod нет в process_data_result, берем данные из bergapi_data
+    # Конкатенируем данные с условием:
+    # Если kod есть в process_data_result, но производитель "hyundaikia", выбираем минимальную цену
+    # из обоих датафреймов.
+    # Для всех остальных брендов используем логику по умолчанию.
     combined_df = pd.concat(
         [
-            process_data_result,
-            bergapi_data[~bergapi_data["kod"].isin(process_data_result["kod"])],
-        ]
+            process_data_result[process_data_result["proizvoditel_clean"] != "hyundaikia"],
+            bergapi_data[
+                ~bergapi_data["kod"].isin(process_data_result["kod"])
+            ],
+            process_data_result[process_data_result["proizvoditel_clean"] == "hyundaikia"]
+            .merge(
+                bergapi_data[bergapi_data["kod"].isin(process_data_result["kod"])],
+                on="kod",
+                suffixes=("_process", "_bergapi"),
+            )
+            .assign(
+                price=lambda x: x[["price_process", "price_bergapi"]].min(axis=1),
+                stock=lambda x: x[["stock_process", "stock_bergapi"]].max(axis=1),
+            )
+            [["kod", "price", "stock", "sklad_process"]]
+            .rename(columns={"sklad_process": "sklad"}),
+        ],
+        ignore_index=True,
     )
 
-    # Сохраняем результат в базу данных
+    # Убираем колонку proizvoditel_clean перед загрузкой в deliveryminprice
+    combined_df = combined_df.drop(columns=["proizvoditel_clean"])
+
+    # Сохраняем результат в базу данных в таблицу deliveryminprice (без колонки date_processed)
     engine = get_db_engine()
     combined_df.to_sql(
         "deliveryminprice", engine, schema="public", if_exists="replace", index=False
     )
 
-    print("Данные успешно сохранены в таблицу deliveryminprice.")
+    # Добавляем колонку с сегодняшней датой только для таблицы deliverypriceintime
+    combined_df["date_processed"] = datetime.now().strftime('%Y-%m-%d')
+
+    # Проверяем и удаляем старые записи, затем добавляем новые данные, если их еще нет
+    if not manage_deliverypriceintime(engine):
+        combined_df.to_sql(
+            "deliverypriceintime", engine, schema="analitic", if_exists="append", index=False
+        )
+
+    print("Данные успешно сохранены в таблицы deliveryminprice и deliverypriceintime.")
 
 
 # Проверка на запуск скрипта
