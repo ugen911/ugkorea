@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime
 
 
 def load_forreprice_data(engine):
@@ -113,6 +114,20 @@ def load_forreprice_data(engine):
     FROM priceendmonth
     """
     priceendmonth_df = load_and_normalize_table(priceendmonth_query)
+
+    # Загрузка текущего месяца и года
+    current_month = datetime.now().strftime("%Y-%m")
+
+    # Если для текущего месяца цена равна 0, заменяем её на tsenarozn из filtered_df
+    priceendmonth_df = priceendmonth_df.merge(
+        filtered_df[["kod", "tsenarozn"]], on="kod", how="left"
+    )
+    priceendmonth_df.loc[
+        (priceendmonth_df["year_month"] == current_month)
+        & (priceendmonth_df["tsena"] == 0),
+        "tsena",
+    ] = priceendmonth_df["tsenarozn"]
+    priceendmonth_df.drop(columns=["tsenarozn"], inplace=True)
 
     salespivot_query = """
     SELECT kod, year_month, kolichestvo, summa
