@@ -66,61 +66,59 @@ def load_and_process_data(engine):
     return result_df
 
 
-# Функция для вычисления доли продаж через сервис и розницу для каждого kod по месяцам и годам
-def calculate_sales_share_by_kod(df):
+# Функция для вычисления медианной доли service_percent за последние 24 месяца для каждого kod
+def calculate_median_service_percent(df):
     # Преобразуем колонку 'period' в формат даты
     df["period"] = pd.to_datetime(df["period"], format="%d.%m.%Y")
 
     # Выделяем год и месяц из колонки 'period'
     df["month_year"] = df["period"].dt.to_period("M")
 
-    # Группировка по kod, month_year и channel для подсчета количества продаж
+    # Ограничиваем данные только последними 24 месяцами
+    latest_period = df["month_year"].max()
+    last_24_months = latest_period - 23  # Считаем от текущего месяца до 24-го назад
+    df = df[df["month_year"] >= last_24_months]
+
+    # Группировка по kod и month_year для подсчета количества продаж
     sales_per_kod = (
         df.groupby(["kod", "month_year", "channel"])
         .size()
         .reset_index(name="sales_count")
     )
 
-    # Отдельно считаем продажи через сервис и розницу
+    # Отдельно считаем продажи через сервис
     service_sales = sales_per_kod[sales_per_kod["channel"] == "сервис"]
-    retail_sales = sales_per_kod[sales_per_kod["channel"] == "розница"]
-
-    # Переименовываем колонки для удобства
     service_sales = service_sales.rename(columns={"sales_count": "count_service"})
-    retail_sales = retail_sales.rename(columns={"sales_count": "count_retail"})
 
-    # Объединяем продажи по сервису и рознице на уровне kod и month_year
-    combined_sales = pd.merge(
-        service_sales[["kod", "month_year", "count_service"]],
-        retail_sales[["kod", "month_year", "count_retail"]],
-        on=["kod", "month_year"],
-        how="outer",
-    ).fillna(0)
-
-    # Рассчитываем общие продажи для каждого kod и month_year
-    combined_sales["total_sales"] = (
-        combined_sales["count_service"] + combined_sales["count_retail"]
+    # Считаем общее количество продаж для каждого kod и месяца
+    total_sales = (
+        sales_per_kod.groupby(["kod", "month_year"])["sales_count"]
+        .sum()
+        .reset_index(name="total_sales")
     )
 
-    # Рассчитываем процент продаж через сервис и розницу
+    # Объединяем данные по продажам в сервисе и общим продажам
+    combined_sales = pd.merge(
+        service_sales[["kod", "month_year", "count_service"]],
+        total_sales[["kod", "month_year", "total_sales"]],
+        on=["kod", "month_year"],
+        how="right",
+    ).fillna(0)
+
+    # Рассчитываем процент продаж через сервис для каждого kod и месяца
     combined_sales["service_percent"] = (
         combined_sales["count_service"] / combined_sales["total_sales"]
     ) * 100
-    combined_sales["retail_percent"] = (
-        combined_sales["count_retail"] / combined_sales["total_sales"]
-    ) * 100
 
-    # Возвращаем итоговую таблицу
-    return combined_sales[
-        [
-            "kod",
-            "month_year",
-            "service_percent",
-            "count_service",
-            "retail_percent",
-            "count_retail",
-        ]
-    ]
+    # Рассчитываем медианное значение service_percent за последние 24 месяца для каждого kod
+    median_service_percent = (
+        combined_sales.groupby("kod")["service_percent"]
+        .median()
+        .reset_index(name="median_service_percent")
+    )
+
+    # Возвращаем итоговую таблицу с kod и медианным значением service_percent
+    return median_service_percent
 
 
 # Пример вызова функции с передачей объекта engine
@@ -128,5 +126,5 @@ if __name__ == "__main__":
 
     engine = get_db_engine()
     df = load_and_process_data(engine)
-    sales_share_df = calculate_sales_share_by_kod(df)
+    sales_share_df = calculate_median_service_percent(df)
     print(sales_share_df.head())  # Пример вывода первых строк итогового датафрейма
