@@ -66,9 +66,67 @@ def load_and_process_data(engine):
     return result_df
 
 
+# Функция для вычисления доли продаж через сервис и розницу для каждого kod по месяцам и годам
+def calculate_sales_share_by_kod(df):
+    # Преобразуем колонку 'period' в формат даты
+    df["period"] = pd.to_datetime(df["period"], format="%d.%m.%Y")
+
+    # Выделяем год и месяц из колонки 'period'
+    df["month_year"] = df["period"].dt.to_period("M")
+
+    # Группировка по kod, month_year и channel для подсчета количества продаж
+    sales_per_kod = (
+        df.groupby(["kod", "month_year", "channel"])
+        .size()
+        .reset_index(name="sales_count")
+    )
+
+    # Отдельно считаем продажи через сервис и розницу
+    service_sales = sales_per_kod[sales_per_kod["channel"] == "сервис"]
+    retail_sales = sales_per_kod[sales_per_kod["channel"] == "розница"]
+
+    # Переименовываем колонки для удобства
+    service_sales = service_sales.rename(columns={"sales_count": "count_service"})
+    retail_sales = retail_sales.rename(columns={"sales_count": "count_retail"})
+
+    # Объединяем продажи по сервису и рознице на уровне kod и month_year
+    combined_sales = pd.merge(
+        service_sales[["kod", "month_year", "count_service"]],
+        retail_sales[["kod", "month_year", "count_retail"]],
+        on=["kod", "month_year"],
+        how="outer",
+    ).fillna(0)
+
+    # Рассчитываем общие продажи для каждого kod и month_year
+    combined_sales["total_sales"] = (
+        combined_sales["count_service"] + combined_sales["count_retail"]
+    )
+
+    # Рассчитываем процент продаж через сервис и розницу
+    combined_sales["service_percent"] = (
+        combined_sales["count_service"] / combined_sales["total_sales"]
+    ) * 100
+    combined_sales["retail_percent"] = (
+        combined_sales["count_retail"] / combined_sales["total_sales"]
+    ) * 100
+
+    # Возвращаем итоговую таблицу
+    return combined_sales[
+        [
+            "kod",
+            "month_year",
+            "service_percent",
+            "count_service",
+            "retail_percent",
+            "count_retail",
+        ]
+    ]
+
+
 # Пример вызова функции с передачей объекта engine
 if __name__ == "__main__":
-    
+
     engine = get_db_engine()
     df = load_and_process_data(engine)
-    print(df.head())  # Пример вывода первых строк итогового датафрейма
+    sales_share_df = calculate_sales_share_by_kod(df)
+    print(sales_share_df.head())  # Пример вывода первых строк итогового датафрейма
