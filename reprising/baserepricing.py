@@ -10,5 +10,7 @@ filtered_df, priceendmonth, salespivot, stockendmonth, suppliespivot, postupleni
     prepare_filtered_data(engine)
 )
 
-#Пересчитываем цены для прайсов от поставщиков
+# Пересчитываем цены для прайсов от поставщиков
 filtered_df = not_api_calculate_new_prices(filtered_df, salespivot, base_percent=1.53, reduced_base_percent=1.4)
+
+filtered_df.to_csv("filtered_df.csv")

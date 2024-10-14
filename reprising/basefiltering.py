@@ -8,6 +8,7 @@ from ugkorea.reprising.lastpostuplenie import (
     load_postuplenija_data,
     calculate_last_postuplenija,
 )
+from ugkorea.reprising.getmedianprice import get_median_price_by_kod
 
 
 def prepare_filtered_data(engine):
@@ -35,11 +36,15 @@ def prepare_filtered_data(engine):
     postuplenija_df = load_postuplenija_data(engine)
     last_postuplenija_df = calculate_last_postuplenija(postuplenija_df)
 
+    # Получаем медианную цену с проценки
+    medianprice = get_median_price_by_kod(engine)
+
     # Объединяем данные
     filtered_df = filtered_df.merge(sales_share_df, on='kod', how='left')
     filtered_df = filtered_df.merge(konkurent, on='kod', how='left')
     filtered_df = filtered_df.merge(abc, on='kod', how='left')
     filtered_df = filtered_df.merge(last_postuplenija_df, on="kod", how="left")
+    filtered_df = filtered_df.merge(medianprice, on="kod", how="left")
 
     # Убираем строки, где 'naimenovanie' содержит указанные фразы
     phrases_to_exclude = [
