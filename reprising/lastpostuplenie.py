@@ -16,6 +16,9 @@ def load_postuplenija_data(engine):
     # Преобразуем колонку data в формат даты
     df["data"] = pd.to_datetime(df["data"], errors="coerce")
 
+    # Убираем пробелы по концам строк в колонке kod
+    df["kod"] = df["kod"].str.strip()
+
     return df
 
 
