@@ -9,11 +9,8 @@ def calculate_new_prices_for_api(
     # Получаем текущую дату
     current_date = datetime.now()
 
-    # Создаем пустую колонку для новых цен
-    filtered_df["new_price"] = np.nan
-
     # Фильтруем строки, где sklad содержит "api"
-    condition = (
+    condition_api = (
         (
             filtered_df["delsklad"].str.contains("api", case=False, na=False)
         )  # Включаем только delsklad с "api"
@@ -21,16 +18,23 @@ def calculate_new_prices_for_api(
         & (filtered_df["delprice"] > 0)  # delprice положительное
     )
 
+    # Фильтруем строки, где sklad не содержит "api"
+    condition_non_api = ~filtered_df["delsklad"].str.contains(
+        "api", case=False, na=False
+    )
+
     # Присваиваем переменные для удобства работы
-    delprice = filtered_df.loc[condition, "delprice"]
-    medianprice = filtered_df.loc[condition, "middleprice"]
-    maxprice = filtered_df.loc[condition, "maxprice"]
-    abc = filtered_df.loc[condition, "abc"]
-    xyz = filtered_df.loc[condition, "xyz"]
-    tsenarozn = filtered_df.loc[condition, "tsenarozn"]
-    data = pd.to_datetime(filtered_df.loc[condition, "data"], format="%Y-%m-%d")
+    delprice = filtered_df.loc[condition_api, "delprice"]
+    medianprice = filtered_df.loc[condition_api, "middleprice"]
+    maxprice = filtered_df.loc[condition_api, "maxprice"]
+    abc = filtered_df.loc[condition_api, "abc"]
+    xyz = filtered_df.loc[condition_api, "xyz"]
+    tsenarozn = filtered_df.loc[condition_api, "tsenarozn"]
+    data = pd.to_datetime(filtered_df.loc[condition_api, "data"], format="%Y-%m-%d")
     datasozdanija = pd.to_datetime(
-        filtered_df.loc[condition, "datasozdanija"], format="%Y-%m-%d", errors="coerce"
+        filtered_df.loc[condition_api, "datasozdanija"],
+        format="%Y-%m-%d",
+        errors="coerce",
     )
 
     # Получаем даты из salespivot и suppliespivot
@@ -64,9 +68,9 @@ def calculate_new_prices_for_api(
         return base_percent
 
     # Вычисляем base_percent для каждой строки
-    filtered_df.loc[condition, "base_percent"] = filtered_df.loc[condition].apply(
-        get_base_percent, axis=1
-    )
+    filtered_df.loc[condition_api, "base_percent"] = filtered_df.loc[
+        condition_api
+    ].apply(get_base_percent, axis=1)
 
     # Условие по delprice
     new_price = np.select(
@@ -81,14 +85,14 @@ def calculate_new_prices_for_api(
 
     # Условие на дату, если прошло менее 14 дней — новая цена равна tsenarozn
     recent_mask = (current_date - data).dt.days < 14
-    filtered_df.loc[condition & recent_mask, "new_price"] = tsenarozn
+    filtered_df.loc[condition_api & recent_mask, "new_price"] = tsenarozn
 
     # Для всех остальных строк, используем base_percent
-    nan_mask = filtered_df.loc[condition, "new_price"].isna()
-    filtered_df.loc[condition & nan_mask, "new_price"] = (
+    nan_mask = filtered_df.loc[condition_api, "new_price"].isna()
+    filtered_df.loc[condition_api & nan_mask, "new_price"] = (
         np.ceil(
             delprice[nan_mask]
-            * filtered_df.loc[condition & nan_mask, "base_percent"]
+            * filtered_df.loc[condition_api & nan_mask, "base_percent"]
             / 10
         )
         * 10
@@ -97,9 +101,9 @@ def calculate_new_prices_for_api(
     # Условие на дату, если прошло менее 60 дней — не выше 2.2 * medianprice
     last_60_days_mask = (current_date - data).dt.days < 60
     valid_median_mask = medianprice.notna()
-    filtered_df.loc[condition & last_60_days_mask & valid_median_mask, "new_price"] = (
-        np.minimum(new_price, np.ceil(medianprice * 2.2 / 10) * 10)
-    )
+    filtered_df.loc[
+        condition_api & last_60_days_mask & valid_median_mask, "new_price"
+    ] = np.minimum(new_price, np.ceil(medianprice * 2.2 / 10) * 10)
 
     # Проверка условий abc, xyz и продаж/покупок за последние 2 года
     def check_sales_only_and_no_purchases(row):
@@ -118,31 +122,74 @@ def calculate_new_prices_for_api(
         (abc != "A")
         & (abc != "A1")
         & (xyz == "Z")
-        & filtered_df.loc[condition].apply(check_sales_only_and_no_purchases, axis=1)
+        & filtered_df.loc[condition_api].apply(
+            check_sales_only_and_no_purchases, axis=1
+        )
     )
 
     # Применяем ограничение на median_price * 1.4, если выполняются условия
-    filtered_df.loc[condition & special_condition, "new_price"] = np.minimum(
+    filtered_df.loc[condition_api & special_condition, "new_price"] = np.minimum(
         new_price, np.ceil(medianprice * 1.4 / 10) * 10
     )
 
     # Проверка: если abc не C, не null и xyz равен 'X1' или 'X', новая цена не меньше delprice * 1.3
     abc_xyz_condition = (abc.notna()) & (abc != "C") & (xyz.isin(["X1", "X"]))
-    filtered_df.loc[condition & abc_xyz_condition, "new_price"] = np.maximum(
-        filtered_df.loc[condition & abc_xyz_condition, "new_price"],
+    filtered_df.loc[condition_api & abc_xyz_condition, "new_price"] = np.maximum(
+        filtered_df.loc[condition_api & abc_xyz_condition, "new_price"],
         np.ceil(delprice * 1.3 / 10) * 10,
     )
 
+    # Проверка на среднюю цену группы товаров (type_detail, proizvoditel) перед проверкой maxprice и middleprice
+    group_means = (
+        filtered_df.loc[condition_non_api]
+        .groupby(["type_detail", "proizvoditel"])["new_price"]
+        .mean()
+    )
+
+    # Сравниваем с товарами, где sklad содержит "api"
+    for index, row in filtered_df.loc[condition_api].iterrows():
+        group_key = (row["type_detail"], row["proizvoditel"])
+        if group_key in group_means:
+            group_mean_price = group_means[group_key]
+            if row["new_price"] > group_mean_price * 1.2:
+                # Снижаем new_price до средней цены + 10%
+                filtered_df.at[index, "new_price"] = (
+                    np.ceil(group_mean_price * 1.1 / 10) * 10
+                )
+
+    # Проверка: если delprice и new_price отсутствуют, но есть median_price
+    missing_price_condition = (
+        filtered_df["delprice"].isna()
+        & filtered_df["new_price"].isna()
+        & medianprice.notna()
+    )
+    for index, row in filtered_df.loc[missing_price_condition].iterrows():
+        price = row["medianprice"]
+        if price <= 200:
+            new_price = np.ceil(price * 2.2 / 10) * 10
+        elif price <= 300:
+            new_price = np.ceil(price * 2.0 / 10) * 10
+        elif price >= 10000:
+            new_price = np.ceil(price * 1.5 / 10) * 10
+        else:
+            new_price = np.ceil(price * 1.8 / 10) * 10
+
+        # Проверка на tsenarozn
+        if row["tsenarozn"] > new_price:
+            new_price = row["tsenarozn"]
+
+        filtered_df.at[index, "new_price"] = new_price
+
     # Применяем проверки только к строкам, где выполняется условие maxprice и middleprice
     condition_maxprice = (
-        condition
+        condition_api
         & maxprice.notna()
-        & (filtered_df.loc[condition, "new_price"] < maxprice * 1.1)
+        & (filtered_df.loc[condition_api, "new_price"] < maxprice * 1.1)
     )
     condition_middleprice = (
-        condition
+        condition_api
         & medianprice.notna()
-        & (filtered_df.loc[condition, "new_price"] < medianprice * 1.3)
+        & (filtered_df.loc[condition_api, "new_price"] < medianprice * 1.3)
     )
 
     # Проверки на maxprice
