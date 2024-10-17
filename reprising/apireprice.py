@@ -156,6 +156,17 @@ def calculate_new_prices_for_api(
                 filtered_df.at[index, "new_price"] = (
                     np.ceil(group_mean_price * 1.1 / 10) * 10
                 )
+        
+        # Проверка на минимальное значение +10% к delprice
+        min_delprice = np.ceil(delprice.at[index] * 1.1 / 10) * 10
+        if row["new_price"] < min_delprice:
+            filtered_df.at[index, "new_price"] = min_delprice
+        
+        # Проверка на минимальное значение +25% к medianprice
+        if not pd.isna(medianprice.at[index]):
+            min_medianprice = np.ceil(medianprice.at[index] * 1.25 / 10) * 10
+            if row["new_price"] < min_medianprice:
+                filtered_df.at[index, "new_price"] = min_medianprice
 
     # Проверка: если delprice и new_price отсутствуют, но есть median_price
     missing_price_condition = (
