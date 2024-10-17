@@ -47,10 +47,18 @@ def indeksation(filtered_df, priceendmonth):
         f"Количество kod, найденных с совпадением по year_month: {matching_kod_count}"
     )
 
+    # Добавляем колонку в filtered_df для хранения цены прошлого года, если ее еще нет
+    if "price_last_year" not in filtered_df.columns:
+        filtered_df["price_last_year"] = np.nan
+
+    # Записываем цену прошлого года из merged в соответствующие строки filtered_df по 'kod'
+    for kod, price_last_year in zip(merged["kod"], merged["tsena"]):
+        filtered_df.loc[filtered_df["kod"] == kod, "price_last_year"] = price_last_year
+
     # Вычисляем новую цену для каждой строки, если цена прошлого года совпадает с текущей
     def calculate_new_price(row):
         tsenarozn = row["tsenarozn"]
-        price_last_year = row["tsena"]
+        price_last_year = row["price_last_year"]
 
         if price_last_year == tsenarozn:
             if tsenarozn <= 500:
@@ -67,17 +75,15 @@ def indeksation(filtered_df, priceendmonth):
 
     # Применяем логику и считаем количество проиндексированных строк
     indexed_count = 0
-    for index, row in merged.iterrows():
-        new_price = calculate_new_price(row)
-        if new_price != row["new_price"]:
-            merged.at[index, "new_price"] = new_price
-            indexed_count += 1
+    for index, row in filtered_df.iterrows():
+        if not pd.isna(row["price_last_year"]):
+            new_price = calculate_new_price(row)
+            if new_price != row["new_price"]:
+                filtered_df.at[index, "new_price"] = new_price
+                indexed_count += 1
 
     # Отладочная печать: сколько строк было проиндексировано
     print(f"Количество строк, проиндексированных по цене: {indexed_count}")
-
-    # Обновляем значения new_price в исходном filtered_df
-    filtered_df.update(merged[["kod", "new_price"]])
 
     # Проверяем, остались ли пустые строки в new_price
     empty_new_price_count = filtered_df["new_price"].isna().sum()
