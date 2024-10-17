@@ -25,7 +25,8 @@ def calculate_new_prices_for_api(
 
     # Присваиваем переменные для удобства работы
     delprice = filtered_df.loc[condition_api, "delprice"]
-    medianprice = filtered_df.loc[condition_api, "middleprice"]
+    middleprice = filtered_df.loc[condition_api, "middleprice"]
+    medianprice = filtered_df.loc[condition_api, "median_price"]
     maxprice = filtered_df.loc[condition_api, "maxprice"]
     abc = filtered_df.loc[condition_api, "abc"]
     xyz = filtered_df.loc[condition_api, "xyz"]
@@ -156,26 +157,26 @@ def calculate_new_prices_for_api(
                 filtered_df.at[index, "new_price"] = (
                     np.ceil(group_mean_price * 1.1 / 10) * 10
                 )
-        
+
         # Проверка на минимальное значение +10% к delprice
         min_delprice = np.ceil(delprice.at[index] * 1.1 / 10) * 10
         if row["new_price"] < min_delprice:
             filtered_df.at[index, "new_price"] = min_delprice
-        
+
         # Проверка на минимальное значение +25% к medianprice
-        if not pd.isna(medianprice.at[index]):
-            min_medianprice = np.ceil(medianprice.at[index] * 1.25 / 10) * 10
-            if row["new_price"] < min_medianprice:
-                filtered_df.at[index, "new_price"] = min_medianprice
+        if not pd.isna(middleprice.at[index]):
+            min_middleprice = np.ceil(middleprice.at[index] * 1.25 / 10) * 10
+            if row["new_price"] < min_middleprice:
+                filtered_df.at[index, "new_price"] = min_middleprice
 
     # Проверка: если delprice и new_price отсутствуют, но есть median_price
     missing_price_condition = (
         filtered_df["delprice"].isna()
         & filtered_df["new_price"].isna()
-        & medianprice.notna()
+        & filtered_df["median_price"].notna()
     )
     for index, row in filtered_df.loc[missing_price_condition].iterrows():
-        price = row["medianprice"]
+        price = row["median_price"]
         if price <= 200:
             new_price = np.ceil(price * 2.2 / 10) * 10
         elif price <= 300:
@@ -199,8 +200,8 @@ def calculate_new_prices_for_api(
     )
     condition_middleprice = (
         condition_api
-        & medianprice.notna()
-        & (filtered_df.loc[condition_api, "new_price"] < medianprice * 1.3)
+        & middleprice.notna()
+        & (filtered_df.loc[condition_api, "new_price"] < middleprice * 1.3)
     )
 
     # Проверки на maxprice
@@ -210,7 +211,7 @@ def calculate_new_prices_for_api(
 
     # Проверки на middleprice
     filtered_df.loc[condition_middleprice, "new_price"] = (
-        np.ceil(medianprice[condition_middleprice] * 1.3 / 10) * 10
+        np.ceil(middleprice[condition_middleprice] * 1.3 / 10) * 10
     )
 
     # Возвращаем обновленный filtered_df
