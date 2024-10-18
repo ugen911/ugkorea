@@ -165,80 +165,111 @@ def get_final_data(engine):
     return final_data, nomenklatura_ml
 
 
-
 def perform_abc_xyz_analysis(engine):
-    
-    # Вспомогательная функция для очистки и преобразования колонки summa
-    def clean_and_convert_summa(df):
-        # Удаляем пробелы, которые используются как разделители тысяч, и заменяем запятые на точки
-        df['summa'] = df['summa'].astype(str).str.replace('\s', '', regex=True).str.replace(',', '.')
+    import pandas as pd
+
+    # Вспомогательная функция для очистки и преобразования колонки summa и kolichestvo
+    def clean_and_convert_columns(df):
+        # Удаляем пробелы и преобразуем строки в числовой формат
+        df["summa"] = (
+            df["summa"]
+            .astype(str)
+            .str.replace("\s", "", regex=True)
+            .str.replace(",", ".")
+        )
+        df["kolichestvo"] = (
+            df["kolichestvo"]
+            .astype(str)
+            .str.replace("\s", "", regex=True)
+            .str.replace(",", ".")
+        )
         # Преобразуем в числовой тип данных
-        df['summa'] = pd.to_numeric(df['summa'], errors='coerce').fillna(0)
+        df["summa"] = pd.to_numeric(df["summa"], errors="coerce").fillna(0)
+        df["kolichestvo"] = pd.to_numeric(df["kolichestvo"], errors="coerce").fillna(0)
         return df
 
     # Загрузка данных из таблиц
-    prodazhi_df = pd.read_sql_table('prodazhi', con=engine)
-    nomenklatura_df = pd.read_sql_table('nomenklatura', con=engine)
+    prodazhi_df = pd.read_sql_table("prodazhi", con=engine)
+    nomenklatura_df = pd.read_sql_table("nomenklatura", con=engine)
 
     # Удаление пробелов и нежелательных символов в колонке kod
-    prodazhi_df['kod'] = prodazhi_df['kod'].str.strip()
-    nomenklatura_df['kod'] = nomenklatura_df['kod'].str.strip()
+    prodazhi_df["kod"] = prodazhi_df["kod"].str.strip()
+    nomenklatura_df["kod"] = nomenklatura_df["kod"].str.strip()
 
     # Фильтрация nomenklatura по vidnomenklatury == "Товар"
-    filtered_nomenklatura = nomenklatura_df[nomenklatura_df['vidnomenklatury'] == "Товар"][['kod']]
+    filtered_nomenklatura = nomenklatura_df[
+        nomenklatura_df["vidnomenklatury"] == "Товар"
+    ][["kod"]]
 
     # Фильтрация prodazhi на основе kod из отфильтрованной nomenklatura
-    filtered_prodazhi = prodazhi_df[prodazhi_df['kod'].isin(filtered_nomenklatura['kod'])].copy()
+    filtered_prodazhi = prodazhi_df[
+        prodazhi_df["kod"].isin(filtered_nomenklatura["kod"])
+    ].copy()
 
-    # Преобразование kolichestvo и summa
-    filtered_prodazhi['kolichestvo'] = pd.to_numeric(filtered_prodazhi['kolichestvo'], errors='coerce').fillna(0)
-    filtered_prodazhi = clean_and_convert_summa(filtered_prodazhi)
+    # Преобразование summa и kolichestvo
+    filtered_prodazhi = clean_and_convert_columns(filtered_prodazhi)
 
     # Преобразование period в дату
-    filtered_prodazhi['period'] = pd.to_datetime(filtered_prodazhi['period'], format='%d.%m.%Y')
+    filtered_prodazhi["period"] = pd.to_datetime(
+        filtered_prodazhi["period"], format="%d.%m.%Y"
+    )
 
     # Фильтрация данных за последние 13 месяцев от текущей даты
     current_date = pd.Timestamp.now()
     last_13_months = current_date - pd.DateOffset(months=13)
-    last_13_months_data = filtered_prodazhi[filtered_prodazhi['period'] >= last_13_months]
+    last_13_months_data = filtered_prodazhi[
+        filtered_prodazhi["period"] >= last_13_months
+    ]
 
     # ABC анализ по сумме
-    total_summa = last_13_months_data.groupby('kod')['summa'].sum()
-    total_summa_sorted = total_summa.sort_values(ascending=False)
-    cumulative_sum = total_summa_sorted.cumsum()
-    total_cumulative_sum = cumulative_sum.iloc[-1]
+    total_summa = (
+        last_13_months_data.groupby("kod")["summa"].sum().sort_values(ascending=False)
+    )
+    total_summa = total_summa[total_summa > 0]  # Оставляем только значения > 0
+    overall_summa = total_summa.sum()
+    cumulative_summa = total_summa.cumsum()
+    percent_of_total_summa = (cumulative_summa / overall_summa) * 100
 
-    # Определение ABC категорий
-    abc_labels = pd.cut(cumulative_sum, 
-                        bins=[0, 0.05 * total_cumulative_sum, 0.8 * total_cumulative_sum, 0.95 * total_cumulative_sum, total_cumulative_sum], 
-                        labels=['A1', 'A', 'B', 'C'])
+    def assign_abc_category(percent):
+        if percent <= 10:
+            return "A1"
+        elif percent <= 80:
+            return "A"
+        elif percent <= 95:
+            return "B"
+        else:
+            return "C"
 
-    # XYZ анализ по количеству в процентном соотношении
-    total_kolichestvo = last_13_months_data.groupby('kod')['kolichestvo'].sum()
-    total_kolichestvo_sorted = total_kolichestvo.sort_values(ascending=False)
-    cumulative_kolichestvo = total_kolichestvo_sorted.cumsum()
-    total_cumulative_kolichestvo = cumulative_kolichestvo.iloc[-1]
+    abc_categories = percent_of_total_summa.apply(assign_abc_category)
 
-    # Определение XYZ категорий аналогично ABC анализу
-    xyz_labels = pd.cut(cumulative_kolichestvo, 
-                        bins=[0, 0.05 * total_cumulative_kolichestvo, 0.8 * total_cumulative_kolichestvo, 0.95 * total_cumulative_kolichestvo, total_cumulative_kolichestvo], 
-                        labels=['X1', 'X', 'Y', 'Z'])
+    # XYZ анализ по количеству
+    total_kolichestvo = (
+        last_13_months_data.groupby("kod")["kolichestvo"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    total_kolichestvo = total_kolichestvo[
+        total_kolichestvo > 0
+    ]  # Оставляем только значения > 0
+    overall_kolichestvo = total_kolichestvo.sum()
+    cumulative_kolichestvo = total_kolichestvo.cumsum()
+    percent_of_total_kolichestvo = (cumulative_kolichestvo / overall_kolichestvo) * 100
 
-    # Объединение ABC и XYZ анализов в один DataFrame
-    abc_xyz_analysis = pd.DataFrame({
-        'abc': abc_labels,
-        'xyz': xyz_labels
-    }, index=total_summa_sorted.index)
+    def assign_xyz_category(percent):
+        if percent <= 10:
+            return "X1"
+        elif percent <= 80:
+            return "X"
+        elif percent <= 95:
+            return "Y"
+        else:
+            return "Z"
 
-    # Проверка и заполнение категорий для товаров, которые были проданы хотя бы раз
-    sold_items = last_13_months_data['kod'].unique()
-    for item in sold_items:
-        if item not in abc_xyz_analysis.index:
-            abc_xyz_analysis.loc[item] = {'ABC': 'C', 'XYZ': 'Z'}
+    xyz_categories = percent_of_total_kolichestvo.apply(assign_xyz_category)
+
+    # Формирование итогового DataFrame с колонками kod, abc и xyz
+    abc_xyz_analysis = pd.DataFrame(
+        {"abc": abc_categories, "xyz": xyz_categories}, index=total_summa.index
+    )
 
     return abc_xyz_analysis
-
-
-
-
-
