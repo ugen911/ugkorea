@@ -125,6 +125,16 @@ def regtament_view(filtered_df):
         filtered_df["new_price"] - filtered_df["tsenarozn"]
     )
 
+    # Вычисляем процентное отклонение (new_price - tsenarozn) / tsenarozn * 100
+    filtered_df.loc[:, "percent_diff"] = filtered_df.apply(
+        lambda row: (
+            (row["new_price"] - row["tsenarozn"]) / row["tsenarozn"] * 100
+            if pd.notna(row["tsenarozn"]) and row["tsenarozn"] > 0
+            else np.nan
+        ),
+        axis=1,
+    )
+
     # Вычисляем разницу (new_price - tsenarozn) * ostatok
     filtered_df.loc[:, "price_diff_mult_ostatok"] = (
         filtered_df["price_diff"] * filtered_df["ostatok"]
