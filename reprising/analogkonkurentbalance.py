@@ -1,6 +1,10 @@
 import numpy as np
 import pandas as pd
 from ugkorea.db.database import get_db_engine
+from sqlalchemy.exc import ProgrammingError
+from datetime import datetime, timedelta
+from ugkorea.reprising.getkonkurent import autocoreec_data
+
 
 engine = get_db_engine
 
@@ -36,11 +40,8 @@ def service_percentup(df):
 
 
 def konkurents_correct(filtered_df, konkurents):
-
     konkurents = konkurents.rename(columns={"price": "konkurents"})
-    df = pd.merge(
-        filtered_df, konkurents[["kod", "konkurents"]], on="kod", how="left"
-    )
+    df = pd.merge(filtered_df, konkurents[["kod", "konkurents"]], on="kod", how="left")
     """
     Корректирует цену new_price на основе данных о конкурентах и других метрик.
     Если цена конкурента ниже, корректируем new_price, чтобы он был на 10% дешевле конкурента,
@@ -53,14 +54,25 @@ def konkurents_correct(filtered_df, konkurents):
     pd.DataFrame: Обновленный датафрейм с корректировками new_price.
     """
 
+    # Преобразуем колонки в числовой тип, ошибки приведут к NaN
+    df["konkurents"] = pd.to_numeric(df["konkurents"], errors="coerce")
+    df["new_price"] = pd.to_numeric(df["new_price"], errors="coerce")
+    df["middleprice"] = pd.to_numeric(df.get("middleprice", np.nan), errors="coerce")
+    df["maxprice"] = pd.to_numeric(df.get("maxprice", np.nan), errors="coerce")
+
     def adjust_row(row):
         konkurents_price = row["konkurents"]
         new_price = row["new_price"]
+
+        # Пропускаем строки, где нет данных о цене конкурента
+        if pd.isna(konkurents_price):
+            return new_price
+
         middleprice = row.get("middleprice", np.nan)
         maxprice = row.get("maxprice", np.nan)
 
         # Проверка: если konkurents ниже new_price, корректируем new_price
-        if not pd.isna(konkurents_price) and konkurents_price < new_price:
+        if not pd.isna(new_price) and konkurents_price < new_price:
             # Целевая цена - на 10% ниже цены конкурента
             target_price = konkurents_price * 0.90
 
@@ -152,140 +164,251 @@ def sync_prices(filtered_df):
 #############До сюда сделано
 
 
-def adjust_prices(filtered_df, konkurents, engine):
+def update_rasprodat(filtered_df, engine):
     """
-    Функция корректирует цены в filtered_df на основе данных konkurents и заданных правил.
+    Обновляет таблицу rasprodat в базе данных на основе данных из filtered_df.
+    Проверяет наличие продающихся и непродающихся позиций в каждой группе gruppa_analogov.
+    Если таблица rasprodat уже существует, дополняет ее новыми kod. Если таблицы нет, создает новую.
 
     Parameters:
     filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
-    konkurents (pd.DataFrame): Датафрейм с данными о ценах конкурентов.
-    engine (SQLAlchemy Engine): Подключение к базе данных для работы с таблицей rasprodazha.
+    engine (SQLAlchemy Engine): Подключение к базе данных.
 
     Returns:
     pd.DataFrame: Обновленный датафрейм filtered_df со всеми корректировками цен.
     """
-    # Соединяем filtered_df и konkurents по 'kod', берем только колонку 'price' из konkurents
-    konkurents = konkurents.rename(columns={"price": "konkurents"})
-    merged_df = pd.merge(
-        filtered_df, konkurents[["kod", "konkurents"]], on="kod", how="left"
+    # Проверяем, существует ли таблица rasprodat в базе данных
+    try:
+        rasprodat_df = pd.read_sql("SELECT * FROM rasprodat", engine)
+        table_exists = True
+    except ProgrammingError:
+        rasprodat_df = pd.DataFrame(columns=["kod"])
+        table_exists = False
+
+    # Определяем текущую дату и дату 18 месяцев назад
+    current_date = datetime.now()
+    threshold_date = current_date - timedelta(days=18 * 30)  # Приблизительно 18 месяцев
+
+    # Группируем по gruppa_analogov и проверяем наличие продающихся и непродающихся позиций
+    groups_to_remove = []
+    for gruppa, group_df in filtered_df.groupby("gruppa_analogov"):
+        # Определяем продающиеся и непродающиеся позиции
+        selling_positions = group_df[
+            group_df["abc"].isin(["A1", "A", "B"]) & group_df["xyz"].isin(["X1", "X"])
+        ]
+        non_selling_positions = group_df[
+            (group_df["abc"].isin(["C", None]))
+            & (group_df["xyz"].isin(["Y", "Z", None]))
+            & (
+                group_df["datasozdanija"].isna()
+                | (pd.to_datetime(group_df["datasozdanija"]) <= threshold_date)
+            )
+        ]
+
+        # Проверяем, если есть и продающиеся, и непродающиеся позиции
+        if not selling_positions.empty and not non_selling_positions.empty:
+            # Проходим по non_selling_positions и проверяем, есть ли позиции с таким же proizvoditel, но не в non_selling_positions
+            to_remove = []
+            for idx, row in non_selling_positions.iterrows():
+                # Находим другие позиции с таким же производителем, но не в non_selling_positions
+                same_proizvoditel = group_df[
+                    (group_df["proizvoditel"] == row["proizvoditel"])
+                    & (~group_df["kod"].isin(non_selling_positions["kod"]))
+                ]
+
+                # Если такие позиции есть, добавляем kod в список на удаление
+                if not same_proizvoditel.empty:
+                    to_remove.append(row["kod"])
+
+            # Убираем из non_selling_positions те kod, которые должны быть удалены
+            non_selling_positions = non_selling_positions[
+                ~non_selling_positions["kod"].isin(to_remove)
+            ]
+
+            # Добавляем оставшиеся kod в список для удаления
+            groups_to_remove.extend(non_selling_positions["kod"].tolist())
+
+    # Создаем датафрейм с новыми kod, которые нужно добавить в rasprodat
+    new_kod_df = pd.DataFrame(groups_to_remove, columns=["kod"])
+
+    # Проверяем, какие kod уже существуют в rasprodat и какие нужно добавить
+    if table_exists:
+        new_kod_df = new_kod_df[~new_kod_df["kod"].isin(rasprodat_df["kod"])]
+
+    # Объединяем старые и новые данные и сохраняем в базу данных
+    updated_rasprodat_df = (
+        pd.concat([rasprodat_df, new_kod_df]).drop_duplicates().reset_index(drop=True)
+    )
+    updated_rasprodat_df.to_sql("rasprodat", engine, if_exists="replace", index=False)
+
+    # Теперь корректируем цены для всех позиций из rasprodat
+    # Выбираем позиции из filtered_df, которые есть в обновленной таблице rasprodat
+    positions_to_update = filtered_df[
+        filtered_df["kod"].isin(updated_rasprodat_df["kod"])
+    ]
+
+    for idx, row in positions_to_update.iterrows():
+        middleprice = row["middleprice"]
+        maxprice = row["maxprice"]
+
+        if not pd.isna(middleprice) and not pd.isna(maxprice):
+            # Вычисляем минимальную цену на основе middleprice и maxprice
+            min_price = max(
+                np.ceil(middleprice * 1.3 / 10) * 10, np.ceil(maxprice * 1.1 / 10) * 10
+            )
+        else:
+            # Если middleprice или maxprice отсутствуют, берем минимальную цену из группы gruppa_analogov
+            group = filtered_df[
+                filtered_df["gruppa_analogov"] == row["gruppa_analogov"]
+            ]
+            min_group_price = group["new_price"].min()
+
+            # Делаем текущую позицию на 10% дешевле самой дешевой в группе
+            min_price = (
+                np.ceil(min_group_price * 0.9 / 10) * 10 if min_group_price > 0 else 10
+            )
+
+        # Обновляем new_price в исходном датафрейме
+        filtered_df.loc[filtered_df["kod"] == row["kod"], "new_price"] = min_price
+
+    print("Таблица rasprodat успешно обновлена, и цены скорректированы.")
+
+    # Возвращаем обновленный датафрейм
+    return filtered_df
+
+
+def adjust_original_prices(filtered_df):
+    """
+    Корректирует цены в группах gruppa_analogov, чтобы оригинальные позиции всегда были дороже,
+    чем неоригинальные, следуя заданным правилам.
+
+    Parameters:
+    filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
+
+    Returns:
+    pd.DataFrame: Обновленный датафрейм filtered_df со всеми корректировками цен.
+    """
+    # Группируем по gruppa_analogov
+    for gruppa, group_df in filtered_df.groupby("gruppa_analogov"):
+        # Отбираем оригинальные и неоригинальные позиции
+        original_positions = group_df[group_df["is_original"] == True]
+        non_original_positions = group_df[group_df["is_original"] == False]
+
+        # Проверяем, есть ли оригинальные и неоригинальные позиции в группе
+        if not original_positions.empty and not non_original_positions.empty:
+            # Находим максимальную цену среди неоригинальных позиций
+            max_non_orig_price = non_original_positions["new_price"].max()
+
+            # Проверяем, превышает ли цена неоригинала цену всех оригиналов
+            for non_orig_idx, non_orig_row in non_original_positions.iterrows():
+                # Проверяем, есть ли оригинальные позиции, цена которых ниже текущей неоригинальной
+                originals_below = original_positions[
+                    original_positions["new_price"] <= non_orig_row["new_price"]
+                ]
+
+                if not originals_below.empty:
+                    # Проверяем наличие delprice и delsklad у неоригинальной позиции
+                    if (
+                        pd.notna(non_orig_row["delprice"])
+                        and "api" not in non_orig_row["delsklad"].lower()
+                    ):
+                        # Увеличиваем цену всех оригиналов на 15% больше, чем максимальная цена неоригинала в группе
+                        target_price = max_non_orig_price * 1.15
+                        target_price = np.ceil(target_price / 10) * 10
+                        filtered_df.loc[
+                            filtered_df["kod"].isin(original_positions["kod"]),
+                            "new_price",
+                        ] = target_price
+                    else:
+                        # Если delprice у неоригинала отсутствует или склад содержит "api"
+                        for orig_idx, orig_row in originals_below.iterrows():
+                            # Проверяем, есть ли у оригинала delprice и delsklad
+                            if (
+                                pd.notna(orig_row["delprice"])
+                                and "api" not in orig_row["delsklad"].lower()
+                            ):
+                                # Пытаемся снизить цену неоригинала
+                                target_price = (
+                                    np.ceil((orig_row["new_price"] * 0.85) / 10) * 10
+                                )
+                                min_limit = max(
+                                    (
+                                        np.ceil(non_orig_row["middleprice"] * 1.3 / 10)
+                                        * 10
+                                        if pd.notna(non_orig_row["middleprice"])
+                                        else 0
+                                    ),
+                                    (
+                                        np.ceil(non_orig_row["maxprice"] * 1.1 / 10)
+                                        * 10
+                                        if pd.notna(non_orig_row["maxprice"])
+                                        else 0
+                                    ),
+                                )
+
+                                # Проверяем, чтобы target_price не опустился ниже min_limit
+                                if target_price >= min_limit:
+                                    filtered_df.loc[
+                                        filtered_df["kod"] == non_orig_row["kod"],
+                                        "new_price",
+                                    ] = target_price
+                                else:
+                                    # Если не удалось снизить цену неоригинала, повышаем цену оригинала
+                                    required_price = max_non_orig_price * 1.15
+                                    required_price = np.ceil(required_price / 10) * 10
+                                    filtered_df.loc[
+                                        filtered_df["kod"] == orig_row["kod"],
+                                        "new_price",
+                                    ] = required_price
+                            else:
+                                # Если нет возможности снизить цену у неоригинала, поднимаем цену у всех оригиналов
+                                required_price = max_non_orig_price * 1.15
+                                required_price = np.ceil(required_price / 10) * 10
+                                filtered_df.loc[
+                                    filtered_df["kod"].isin(original_positions["kod"]),
+                                    "new_price",
+                                ] = required_price
+
+    return filtered_df
+
+
+def main(filtered_df, engine):
+    """
+    Главная функция, которая последовательно выполняет все функции корректировки цен.
+
+    Parameters:
+    filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
+    engine (SQLAlchemy Engine): Подключение к базе данных.
+
+    Returns:
+    pd.DataFrame: Финальный откорректированный датафрейм.
+    """
+    print(
+        "# Применяем корректировку цен на основе xyz, median_service_percent и tsenarozn"
     )
 
-    # Применяем начальную корректировку к ценам
-    merged_df = service_percentup(merged_df)
+    filtered_df = service_percentup(filtered_df)
 
-    # Применяем корректировку цен на основе конкурентов
-    merged_df = konkurents_correct(merged_df)
+    konkurents = autocoreec_data(engine=engine)
 
-    # Группировка по gruppa_analogov и производителю
-    for gruppa, group_df in merged_df.groupby(["gruppa_analogov", "proizvoditel"]):
-        # Проверка и синхронизация цен внутри группы
-        max_new_price = group_df["new_price"].max()
-        min_new_price = group_df["new_price"].min()
+    print('Корректируем цены на основе данных конкурентов')
+    filtered_df = konkurents_correct(filtered_df, konkurents)
 
-        if max_new_price != min_new_price:
-            # Корректировка цены для всех элементов группы
-            for idx in group_df.index:
-                middleprice = merged_df.at[idx, "middleprice"]
-                maxprice = merged_df.at[idx, "maxprice"]
+    print('# Синхронизируем цены внутри групп по gruppa_analogov и производителю')
+    filtered_df = sync_prices(filtered_df)
 
-                if merged_df.at[idx, "new_price"] == max_new_price:
-                    if not pd.isna(maxprice):
-                        merged_df.at[idx, "new_price"] = (
-                            np.ceil(min(maxprice * 1.10, min_new_price + 1) / 10) * 10
-                        )
-                else:
-                    merged_df.at[idx, "new_price"] = (
-                        np.ceil(max(min_new_price, merged_df.at[idx, "new_price"]) / 10)
-                        * 10
-                    )
+    print("# Обновляем таблицу rasprodat и корректируем цены на основе таблицы")
+    # Обновляем таблицу rasprodat и корректируем цены на основе таблицы
+    filtered_df = update_rasprodat(filtered_df, engine)
 
-    # Проверка на позиции, от которых нужно избавиться
-    filtered_for_sale = merged_df[
-        (merged_df["is_original"] == False)
-        & (merged_df["abc"].isin(["A", "B"]))
-        & (merged_df["xyz"] == "X")
-    ]
-    for kod in filtered_for_sale["kod"].unique():
-        konkurent = merged_df[
-            (
-                merged_df["gruppa_analogov"]
-                == merged_df.loc[filtered_for_sale.index, "gruppa_analogov"].iloc[0]
-            )
-            & (merged_df["abc"].isin(["C", None]))
-            & (merged_df["xyz"].isin(["Y", "Z", None]))
-        ]
-        if not konkurent.empty:
-            # Проверка на наличие в rasprodazha и добавление, если необходимо
-            konkurent_kod = konkurent["kod"].iloc[0]
-            if not check_kod_in_rasprodazha(engine, konkurent_kod):
-                add_kod_to_rasprodazha(engine, konkurent_kod)
+    print("Корректируем цены для оригинальных позиций относительно неоригинальных")
+    # Корректируем цены для оригинальных позиций относительно неоригинальных
+    filtered_df = adjust_original_prices(filtered_df)
+    
 
-            # Установка минимальной цены
-            target_price = konkurent["new_price"].min() * 1.10
-            middleprice = merged_df.loc[merged_df["kod"] == kod, "middleprice"].iloc[0]
-            maxprice = merged_df.loc[merged_df["kod"] == kod, "maxprice"].iloc[0]
+    print('Еще раз выравниваем цены с одинаковыми производителями в аналогах...')
+    # Синхронизируем цены внутри групп по gruppa_analogov и производителю
+    filtered_df = sync_prices(filtered_df)
 
-            if not pd.isna(middleprice) and not pd.isna(maxprice):
-                adjusted_price = max(middleprice * 1.40, maxprice * 1.10, target_price)
-            else:
-                adjusted_price = target_price
-
-            merged_df.loc[merged_df["kod"] == kod, "new_price"] = (
-                np.ceil(adjusted_price / 10) * 10
-            )
-
-    # Проверка и корректировка цен оригиналов относительно неоригиналов
-    for gruppa, group_df in merged_df.groupby("gruppa_analogov"):
-        original = group_df[group_df["is_original"] == True]
-        non_original = group_df[group_df["is_original"] == False]
-
-        if not original.empty and not non_original.empty:
-            for orig_idx in original.index:
-                orig_price = merged_df.at[orig_idx, "new_price"]
-                for non_orig_idx in non_original.index:
-                    non_orig_price = merged_df.at[non_orig_idx, "new_price"]
-
-                    # Если оригинал дешевле неоригинала
-                    if orig_price < non_orig_price:
-                        if not pd.isna(merged_df.at[non_orig_idx, "konkurents"]):
-                            merged_df.at[orig_idx, "new_price"] = (
-                                np.ceil((non_orig_price * 1.15) / 10) * 10
-                            )
-                        else:
-                            middleprice = merged_df.at[non_orig_idx, "middleprice"]
-                            maxprice = merged_df.at[non_orig_idx, "maxprice"]
-
-                            if not pd.isna(middleprice) and not pd.isna(maxprice):
-                                merged_df.at[non_orig_idx, "new_price"] = (
-                                    np.ceil(
-                                        min(middleprice * 1.20, maxprice * 1.10) / 10
-                                    )
-                                    * 10
-                                )
-                                merged_df.at[orig_idx, "new_price"] = (
-                                    np.ceil((non_orig_price * 1.15) / 10) * 10
-                                )
-                            else:
-                                merged_df.at[orig_idx, "new_price"] = (
-                                    np.ceil((non_orig_price * 1.15) / 10) * 10
-                                )
-
-    return merged_df
-
-
-def check_kod_in_rasprodazha(engine, kod):
-    """
-    Проверяет, есть ли kod в таблице rasprodazha.
-    """
-    query = f"SELECT COUNT(*) FROM rasprodazha WHERE kod = '{kod}'"
-    with engine.connect() as conn:
-        result = conn.execute(query).scalar()
-    return result > 0
-
-
-def add_kod_to_rasprodazha(engine, kod):
-    """
-    Добавляет kod в таблицу rasprodazha.
-    """
-    with engine.connect() as conn:
-        conn.execute(f"INSERT INTO rasprodazha (kod) VALUES ('{kod}')")
+    # Возвращаем финальный откорректированный датафрейм
+    return filtered_df
