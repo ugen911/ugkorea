@@ -288,3 +288,55 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
     ) * 100
 
     return filtered_df
+
+
+def adjust_prices_without_delprice(filtered_df):
+    """
+    Функция корректирует позиции, у которых нет delprice и delsklad, но есть median_price,
+    так чтобы new_price не превышал определенные ограничения, основанные на tsenazakup (округлено до 10 рублей вверх).
+    new_price не должен быть NaN.
+
+    Parameters:
+    filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
+
+    Returns:
+    pd.DataFrame: Обновленный датафрейм с откорректированными ценами.
+    """
+    # Копируем датафрейм, чтобы избежать предупреждений SettingWithCopyWarning
+    filtered_df = filtered_df.copy()
+
+    # Фильтруем позиции, у которых нет delprice и delsklad, но есть median_price
+    condition = (
+        filtered_df["delprice"].isna()
+        & filtered_df["delsklad"].isna()
+        & filtered_df["median_price"].notna()
+        & filtered_df["new_price"].notna()
+    )
+
+    # Отбираем строки, соответствующие условию
+    positions_to_adjust = filtered_df[condition]
+
+    # Применяем корректировку
+    for idx, row in positions_to_adjust.iterrows():
+        tsenazakup = row["tsenazakup"]
+        if not pd.isna(tsenazakup) and tsenazakup > 0:
+            # Устанавливаем max_price в зависимости от значения tsenazakup
+            if tsenazakup <= 1000:
+                max_price = tsenazakup * 3.0
+            elif 1000 < tsenazakup <= 2000:
+                max_price = tsenazakup * 2.5
+            elif 2000 < tsenazakup <= 5000:
+                max_price = tsenazakup * 2.2
+            elif 5000 < tsenazakup <= 10000:
+                max_price = tsenazakup * 2.0
+            else:  # tsenazakup > 10000
+                max_price = tsenazakup * 1.8
+
+            # Округляем до 10 рублей вверх
+            max_price_rounded = np.ceil(max_price / 10) * 10
+
+            # Если new_price превышает max_price, корректируем его
+            if row["new_price"] > max_price_rounded:
+                filtered_df.loc[idx, "new_price"] = max_price_rounded
+
+    return filtered_df

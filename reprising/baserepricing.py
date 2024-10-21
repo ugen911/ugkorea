@@ -3,10 +3,12 @@ from ugkorea.db.database import get_db_engine
 from ugkorea.reprising.notapireprice import not_api_calculate_new_prices
 from ugkorea.reprising.apireprice import calculate_new_prices_for_api
 from ugkorea.reprising.uppricebyclass import adjust_prices_by_class
-from ugkorea.reprising.nonliquid import adjust_new_price_for_non_liquid
+from ugkorea.reprising.nonliquid import adjust_new_price_for_non_liquid, adjust_prices_without_delprice
 from ugkorea.reprising.inflation import indeksation
 from ugkorea.reprising.analogkonkurentbalance import main as rebalance
-
+import numpy as np
+import pandas as pd
+import openpyxl
 
 # Подключаемся к базе данных
 engine = get_db_engine()
@@ -38,7 +40,8 @@ df_new = adjust_prices_by_class(filtered_df=df, salespivot=salespivot, suppliesp
 # - расписать условия нет поступлений 12 месяцев и какие продажи
 # - нет поступлений 24 месяца и больше и продажи какие  распиши вилки
 print('nonliquid')
-df_1 = adjust_new_price_for_non_liquid(df_new, salespivot)
+res = adjust_new_price_for_non_liquid(df_new, salespivot)
+df_1 = adjust_prices_without_delprice(res)
 # df_1.to_csv("filtered_df.csv")
 # Проверить если у товаров с A A1 при этом X1 X поднятие цены за последние 3 года коррелирует с падением продаж при этом наценка относительно median_price > 50%
 # то пробуем снижать цену не протеворечит проверки на максимум и среднюю. Можно рассчитать сезонку по медиане и +- от медианы по каждому месяцу общих продаж учесть сезонность и если падение продаж при повышении цены значительно выше сезонки то значит есть зависимость от цены
@@ -56,5 +59,101 @@ df_2 = indeksation(df_1, priceendmonth)
 # Так же проверяем чтобы аналог не мог стоить дороже оригинала
 print('rebalace...')
 df_3 = rebalance(df_2, engine=engine)
-df_3.to_csv("filtered_df.csv")
+# df_3.to_csv("filtered_df.csv")
 # Сделать увеличенную наценку если товар продается только в сервис добавить + вилку в цене на товары до 2000р
+
+
+def regtament_view(filtered_df):
+    """
+    Функция для обработки filtered_df, оставляет колонки в заданной последовательности,
+    вычисляет наценку и разницу цен, добавляет их в отдельные колонки, сортирует данные,
+    фильтрует строки, где price_diff не равен 0, и добавляет итоговую сумму в последнюю строку.
+
+    Parameters:
+    filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
+
+    Returns:
+    pd.DataFrame: Обработанный датафрейм с дополнительными колонками.
+    """
+    # Задаем последовательность колонок
+    columns_order = [
+        "kod",
+        "artikul",
+        "proizvoditel",
+        "gruppa_analogov",
+        "naimenovanie",
+        "edizm",
+        "delprice",
+        "delsklad",
+        "median_price",
+        "middleprice",
+        "maxprice",
+        "tsenazakup",
+        "konkurents",
+        "ostatok",
+        "abc",
+        "xyz",
+        "tsenarozn",
+        "new_price",
+    ]
+
+    # Оставляем только нужные колонки и в указанном порядке
+    filtered_df = filtered_df[columns_order].copy()
+
+    # Вычисляем наценку (new_price к delprice), если delprice не пустой
+    filtered_df.loc[:, "markup_to_delprice"] = filtered_df.apply(
+        lambda row: (
+            (row["new_price"] - row["delprice"]) / row["delprice"] * 100
+            if pd.notna(row["delprice"]) and row["delprice"] > 0
+            else np.nan
+        ),
+        axis=1,
+    )
+
+    # Вычисляем фактическую наценку (new_price к tsenazakup), если tsenazakup не пустой
+    filtered_df.loc[:, "fact_markup"] = filtered_df.apply(
+        lambda row: (
+            (row["new_price"] - row["tsenazakup"]) / row["tsenazakup"] * 100
+            if pd.notna(row["tsenazakup"]) and row["tsenazakup"] > 0
+            else np.nan
+        ),
+        axis=1,
+    )
+
+    # Вычисляем разницу new_price - tsenarozn
+    filtered_df.loc[:, "price_diff"] = (
+        filtered_df["new_price"] - filtered_df["tsenarozn"]
+    )
+
+    # Вычисляем разницу (new_price - tsenarozn) * ostatok
+    filtered_df.loc[:, "price_diff_mult_ostatok"] = (
+        filtered_df["price_diff"] * filtered_df["ostatok"]
+    )
+
+    # Сортируем по naimenovanie, затем по gruppa_analogov, и затем по proizvoditel
+    filtered_df = filtered_df.sort_values(
+        by=["naimenovanie", "gruppa_analogov", "proizvoditel"]
+    )
+
+    # Фильтруем только те строки, где price_diff не равен 0
+    filtered_df = filtered_df[filtered_df["price_diff"] != 0]
+
+    # Вычисляем сумму по колонке price_diff_mult_ostatok
+    total_sum = filtered_df["price_diff_mult_ostatok"].sum()
+    print(f"Total sum of price_diff_mult_ostatok: {total_sum}")
+
+    # Добавляем строку с итоговой суммой в конец датафрейма
+    total_sum_row = {col: "" for col in filtered_df.columns}
+    total_sum_row["kod"] = "Итоговая сумма"
+    total_sum_row["price_diff_mult_ostatok"] = total_sum
+
+    # Присоединяем итоговую строку к датафрейму
+    filtered_df = pd.concat(
+        [filtered_df, pd.DataFrame([total_sum_row])], ignore_index=True
+    )
+
+    return filtered_df
+
+
+regtament_views = regtament_view(filtered_df=df_3)
+regtament_views.to_excel("regtament_views.xlsx", index=False)
