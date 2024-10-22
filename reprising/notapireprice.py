@@ -56,8 +56,13 @@ def not_api_calculate_new_prices(
         get_base_percent, axis=1
     )
 
-    # Условие по delprice
-    new_price = np.select(
+    # Присваиваем new_price для всех строк по умолчанию на основе base_percent
+    filtered_df.loc[condition, "new_price"] = (
+        np.ceil(delprice * filtered_df.loc[condition, "base_percent"] / 10) * 10
+    )
+
+    # Условие по delprice (корректировка для заданных диапазонов цен)
+    delprice_correction = np.select(
         [
             delprice <= 100,
             delprice <= 300,
@@ -72,17 +77,26 @@ def not_api_calculate_new_prices(
             np.ceil(delprice * 1.25 / 10) * 10,
             np.ceil(delprice * 1.3 / 10) * 10,
         ],
-        default=np.nan,  # Все, что не попадает под условия, пока NaN
+        default=filtered_df.loc[
+            condition, "new_price"
+        ],  # Используем текущее значение new_price
     )
+
+    filtered_df.loc[condition, "new_price"] = delprice_correction
 
     # Условие по наименованию (для строк, не попавших под предыдущее условие)
     mask_naimenovanie = naimenovanie.str.startswith(
         ("Тормозная жид", "Предохранитель", "Шайба", "Щетка", "Антифриз", "Хомут")
     )
 
-    # Корректируем те строки, которые попадают под mask_naimenovanie
-    filtered_df.loc[condition & mask_naimenovanie, "new_price"] = (
-        np.ceil(delprice[mask_naimenovanie] * 1.6 / 10) * 10
+    # Рассчитываем корректированную цену для категорий товаров
+    corrected_price = np.ceil(delprice[mask_naimenovanie] * 1.6 / 10) * 10
+
+    # Применяем корректировку только если рассчитанная цена больше текущего new_price
+    filtered_df.loc[condition & mask_naimenovanie, "new_price"] = np.where(
+        filtered_df.loc[condition & mask_naimenovanie, "new_price"] < corrected_price,
+        corrected_price,
+        filtered_df.loc[condition & mask_naimenovanie, "new_price"],
     )
 
     # Для всех остальных строк, используем base_percent
