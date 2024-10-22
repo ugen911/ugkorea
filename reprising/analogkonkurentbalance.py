@@ -23,13 +23,13 @@ def service_percentup(df):
         # Проверка условий для корректировки
         if (
             xyz in ["X", "X1"]
-            and median_service_percent > 90
+            and median_service_percent > 80
             and not pd.isna(tsenarozn)
         ):
             if tsenarozn < 500:
-                new_price = np.ceil((new_price * 1.10) / 10) * 10
+                new_price = np.ceil((new_price * 1.15) / 10) * 10
             elif 500 <= tsenarozn < 1000:
-                new_price = np.ceil((new_price * 1.07) / 10) * 10
+                new_price = np.ceil((new_price * 1.10) / 10) * 10
             elif 1000 <= tsenarozn < 2000:
                 new_price = np.ceil((new_price * 1.05) / 10) * 10
 
