@@ -1,5 +1,7 @@
 import pandas as pd
+import os
 import numpy as np
+import openpyxl
 from datetime import datetime
 
 
@@ -176,6 +178,102 @@ def load_forreprice_data(engine):
         suppliespivot_filtered,
         postuplenija_filtered,
     )
+
+
+
+
+
+def exclude_kods_from_file(filtered_df):
+    """
+    Функция для исключения позиций на основе файла 'Непереоценивать.xlsx'.
+    Пытается получить файл по двум указанным адресам. Если файл доступен, проводит
+    объединение с filtered_df и исключает позиции на основе найденных kod.
+
+    Parameters:
+    filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
+
+    Returns:
+    pd.DataFrame: Обновленный датафрейм, в котором исключены позиции на основе файла.
+    """
+    # Пути к файлу
+    paths = [
+        r"D:\NAS\заказы\Непереоценивать.xlsx",
+        r"\\26.218.196.12\заказы\Непереоценивать.xlsx",
+    ]
+
+    # Попытка загрузить файл по одному из путей
+    file_path = None
+    for path in paths:
+        if os.path.exists(path):
+            file_path = path
+            break
+
+    # Если файл не найден ни по одному пути, пропускаем выполнение функции
+    if file_path is None:
+        print(
+            "Файл 'Непереоценивать.xlsx' не найден по указанным путям. Пропуск выполнения функции."
+        )
+        return filtered_df
+
+    try:
+        # Загружаем данные из листа "Лист1", читая 'kod' как текст
+        df_to_exclude = pd.read_excel(file_path, sheet_name="Лист1", dtype={"kod": str})
+
+        # Приводим колонку 'kod' к строковому типу и удаляем пробелы
+        df_to_exclude["kod"] = df_to_exclude["kod"].astype(str).str.strip()
+
+        # Делаем левое соединение с filtered_df по колонке 'kod'
+        merged_df = pd.merge(
+            filtered_df, df_to_exclude[["kod"]], on="kod", how="left", indicator=True
+        )
+
+        # Определяем коды, которые найдены и отсутствуют
+        found_kods = merged_df[merged_df["_merge"] == "both"]
+        not_found_kods = merged_df[merged_df["_merge"] == "right_only"]
+
+        # Если есть коды, которые отсутствуют в filtered_df, выгружаем их обратно
+        if not not_found_kods.empty:
+            print(f"Коды, не найденные в filtered_df: {len(not_found_kods)}")
+            not_found_df = df_to_exclude[
+                df_to_exclude["kod"].isin(not_found_kods["kod"])
+            ]
+
+            # Выгружаем файл обратно с текстовым форматом для всех колонок
+            with pd.ExcelWriter(
+                file_path, engine="openpyxl", mode="a", if_sheet_exists="replace"
+            ) as writer:
+                not_found_df.to_excel(writer, sheet_name="Лист1", index=False)
+            return filtered_df
+
+        # Оставляем только те строки, где kod из df_to_exclude присутствует в filtered_df
+        filtered_exclude = merged_df[merged_df["_merge"] == "both"]
+
+        # Выбираем нужные колонки для экспорта
+        result_df = filtered_exclude[
+            ["kod", "artikul", "proizvoditel", "naimenovanie", "edizm", "datasozdanija"]
+        ]
+
+        # Выгружаем отфильтрованный датафрейм обратно в файл
+        with pd.ExcelWriter(
+            file_path, engine="openpyxl", mode="a", if_sheet_exists="replace"
+        ) as writer:
+            result_df.to_excel(writer, sheet_name="Лист1", index=False)
+
+        # Исключаем из filtered_df все строки, где kod присутствует в df_to_exclude
+        initial_count = len(filtered_df)
+        filtered_df = filtered_df[~filtered_df["kod"].isin(df_to_exclude["kod"])]
+        removed_count = initial_count - len(filtered_df)
+
+        # Печатаем количество удаленных строк
+        print(f"Удалено строк из filtered_df: {removed_count}")
+
+    except Exception as e:
+        print(f"Ошибка при обработке файла: {e}")
+
+    return filtered_df
+
+
+
 
 
 # Проверка работы функции при запуске скрипта

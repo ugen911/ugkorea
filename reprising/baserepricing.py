@@ -7,6 +7,7 @@ from ugkorea.reprising.nonliquid import adjust_new_price_for_non_liquid, adjust_
 from ugkorea.reprising.inflation import indeksation
 from ugkorea.reprising.analogkonkurentbalance import main as rebalance
 from ugkorea.reprising.upload import regtament_view
+from ugkorea.reprising.loaddata import exclude_kods_from_file
 import numpy as np
 import pandas as pd
 import openpyxl
@@ -18,15 +19,15 @@ engine = get_db_engine()
 filtered_df, priceendmonth, salespivot, stockendmonth, suppliespivot, postuplenija = (
     prepare_filtered_data(engine)
 )
+
+
 print("Пересчитываем цены для прайсов от поставщиков")
 # Пересчитываем цены для прайсов от поставщиков
 filtered = not_api_calculate_new_prices(filtered_df, salespivot, base_percent=1.53, reduced_base_percent=1.45)
 print("Базовая наценка от api")
 # filtered.to_csv("filtered_df.csv")
 # Базовая наценка от api
-df = calculate_new_prices_for_api(
-    filtered, salespivot, suppliespivot, base_percent=1.6, reduced_base_percent=1.45
-)
+df = calculate_new_prices_for_api(filtered, salespivot, suppliespivot, base_percent=1.6, reduced_base_percent=1.5)
 
 # df.to_csv("filtered_df.csv")
 
@@ -63,6 +64,9 @@ df_3 = rebalance(df_2, engine=engine)
 # df_3.to_csv("filtered_df.csv")
 # Сделать увеличенную наценку если товар продается только в сервис добавить + вилку в цене на товары до 2000р
 
+# Убираем позиции из датафрейма которые не надо переоценивать
+f = exclude_kods_from_file(df_3)
 
-regtament_views = regtament_view(filtered_df=df_3)
+
+regtament_views = regtament_view(filtered_df=f)
 regtament_views.to_excel("regtament_views.xlsx", index=False)
