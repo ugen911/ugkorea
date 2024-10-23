@@ -180,9 +180,6 @@ def load_forreprice_data(engine):
     )
 
 
-
-
-
 def exclude_kods_from_file(filtered_df):
     """
     Функция для исключения позиций на основе файла 'Непереоценивать.xlsx'.
@@ -257,7 +254,9 @@ def exclude_kods_from_file(filtered_df):
         with pd.ExcelWriter(
             file_path, engine="openpyxl", mode="a", if_sheet_exists="replace"
         ) as writer:
-            result_df.to_excel(writer, sheet_name="Лист1", index=False)
+            result_df.to_excel(
+                writer, sheet_name="Лист1", index=False, freeze_panes=(1, 0)
+            )
 
         # Исключаем из filtered_df все строки, где kod присутствует в df_to_exclude
         initial_count = len(filtered_df)
@@ -271,9 +270,6 @@ def exclude_kods_from_file(filtered_df):
         print(f"Ошибка при обработке файла: {e}")
 
     return filtered_df
-
-
-
 
 
 # Проверка работы функции при запуске скрипта

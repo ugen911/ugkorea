@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import openpyxl
 
 
 def regtament_view(filtered_df):
@@ -100,6 +99,35 @@ def regtament_view(filtered_df):
     # Присоединяем итоговую строку к датафрейму
     filtered_df = pd.concat(
         [filtered_df, pd.DataFrame([total_sum_row])], ignore_index=True
+    )
+
+    # Переименовываем колонки на русский язык
+    filtered_df = filtered_df.rename(
+        columns={
+            "kod": "Код",
+            "artikul": "Артикул",
+            "proizvoditel": "Производитель",
+            "gruppa_analogov": "Группа аналогов",
+            "naimenovanie": "Наименование",
+            "edizm": "Ед. изм.",
+            "delprice": "Цена поставки",
+            "delsklad": "Склад поставки",
+            "median_price": "Медианная цена",
+            "middleprice": "Средняя цена",
+            "maxprice": "Максимальная цена",
+            "tsenazakup": "Цена закупки",
+            "konkurents": "Конкуренты",
+            "ostatok": "Остаток",
+            "abc": "ABC",
+            "xyz": "XYZ",
+            "tsenarozn": "Розничная цена",
+            "new_price": "Новая цена",
+            "markup_to_delprice": "Наценка к цене поставки",
+            "fact_markup": "Фактическая наценка",
+            "price_diff": "Разница в цене",
+            "percent_diff": "Процент отклонения",
+            "price_diff_mult_ostatok": "Разница цены * Остаток",
+        }
     )
 
     return filtered_df

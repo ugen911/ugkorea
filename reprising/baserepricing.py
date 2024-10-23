@@ -8,9 +8,6 @@ from ugkorea.reprising.inflation import indeksation
 from ugkorea.reprising.analogkonkurentbalance import main as rebalance
 from ugkorea.reprising.upload import regtament_view
 from ugkorea.reprising.loaddata import exclude_kods_from_file
-import numpy as np
-import pandas as pd
-import openpyxl
 
 # Подключаемся к базе данных
 engine = get_db_engine()
@@ -69,4 +66,4 @@ f = exclude_kods_from_file(df_3)
 
 
 regtament_views = regtament_view(filtered_df=f)
-regtament_views.to_excel("reglament_views.xlsx", index=False)
+regtament_views.to_excel("reglament_views.xlsx", index=False, freeze_panes=(1, 0))
