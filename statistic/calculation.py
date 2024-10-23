@@ -446,6 +446,9 @@ if __name__ == "__main__":
     # Вычисление метрик продаж
     union_data = calculate_sales_metrics(sales_data, union_data, deliveryminprice)
 
+    #Замена значений minstock c 0 и Null на 1
+    union_data["min_stock"] = union_data["min_stock"].apply(lambda x: 1 if pd.isna(x) or x == 0 else x)
+
     # Сохранение данных в базу данных,
     
     print("Сохранение результатов в базу данных...")
