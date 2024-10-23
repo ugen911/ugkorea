@@ -294,7 +294,7 @@ def adjust_prices_without_delprice(filtered_df):
     """
     Функция корректирует позиции, у которых нет delprice и delsklad, но есть median_price,
     так чтобы new_price не превышал определенные ограничения, основанные на tsenazakup (округлено до 10 рублей вверх).
-    new_price не должен быть NaN.
+    Также корректируем new_price, если оно меньше 65% от медианной цены по каждому type_detail.
 
     Parameters:
     filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
@@ -316,7 +316,7 @@ def adjust_prices_without_delprice(filtered_df):
     # Отбираем строки, соответствующие условию
     positions_to_adjust = filtered_df[condition]
 
-    # Применяем корректировку
+    # Применяем корректировку на основе tsenazakup
     for idx, row in positions_to_adjust.iterrows():
         tsenazakup = row["tsenazakup"]
         if not pd.isna(tsenazakup) and tsenazakup > 0:
@@ -338,5 +338,22 @@ def adjust_prices_without_delprice(filtered_df):
             # Если new_price превышает max_price, корректируем его
             if row["new_price"] > max_price_rounded:
                 filtered_df.loc[idx, "new_price"] = max_price_rounded
+
+    # Вычисляем медианную цену по каждому type_detail
+    median_type_prices = (
+        filtered_df.groupby("type_detail")["new_price"].median().to_dict()
+    )
+
+    # Корректируем new_price на основе медианной цены по type_detail
+    for idx, row in positions_to_adjust.iterrows():
+        type_detail = row["type_detail"]
+        median_type_price = median_type_prices.get(type_detail, None)
+
+        if median_type_price:
+            min_allowed_price = np.ceil(median_type_price * 0.55 / 10) * 10
+
+            # Если new_price меньше 65% от медианной цены, корректируем его
+            if row["new_price"] < min_allowed_price:
+                filtered_df.loc[idx, "new_price"] = min_allowed_price
 
     return filtered_df

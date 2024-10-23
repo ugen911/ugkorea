@@ -69,4 +69,4 @@ f = exclude_kods_from_file(df_3)
 
 
 regtament_views = regtament_view(filtered_df=f)
-regtament_views.to_excel("regtament_views.xlsx", index=False)
+regtament_views.to_excel("reglament_views.xlsx", index=False)
