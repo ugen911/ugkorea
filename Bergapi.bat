@@ -6,6 +6,7 @@ python -m api.bergapi
 python -m reglament_task.deliveryminprice
 python -m accessold.dataforrepricing
 python -m from_folder_to_df.create_files_to_access
+python -m accessold.deliverypriceexport
 echo bergapi completed.
 
 rem Запись информации о выполнении в лог-файл
