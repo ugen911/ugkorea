@@ -99,7 +99,7 @@ def konkurents_correct(filtered_df, konkurents):
 
 def sync_prices(filtered_df):
     """
-    Синхронизирует цены внутри каждой группы по gruppa_analogov и производителю.
+    Синхронизирует цены внутри каждой группы по gruppa_analogov, производителю и edizm.
     Все позиции в группе получают одинаковую цену. Если наибольшая цена выше, она снижается
     до минимальной цены в группе или до maxprice + 10%, если это применимо. Если этого недостаточно,
     остальные цены поднимаются до этого значения.
@@ -110,11 +110,13 @@ def sync_prices(filtered_df):
     Returns:
     pd.DataFrame: Обновленный датафрейм с синхронизированными ценами внутри групп.
     """
-    # Создаем уникальный идентификатор группы на основе gruppa_analogov и proizvoditel
+    # Создаем уникальный идентификатор группы на основе gruppa_analogov, proizvoditel и edizm
     filtered_df["group_id"] = (
         filtered_df["gruppa_analogov"].astype(str)
         + "_"
         + filtered_df["proizvoditel"].astype(str)
+        + "_"
+        + filtered_df["edizm"].astype(str)
     )
 
     def sync_group(group_df):
@@ -141,23 +143,10 @@ def sync_prices(filtered_df):
 
         return group_df
 
-    # Группируем датафрейм по уникальному идентификатору группы
-    grouped = filtered_df.groupby("group_id")
-
-    # Создаем копию датафрейма для обновления значений
-    filtered_df = filtered_df.copy()
-
-    # Применяем sync_group ко всем группам и обновляем значения в исходном датафрейме
-    for group_id, group in grouped:
-        updated_group = sync_group(group)
-        # Обновляем цены в исходном датафрейме по kod
-        for idx, row in updated_group.iterrows():
-            filtered_df.loc[filtered_df["kod"] == row["kod"], "new_price"] = row[
-                "new_price"
-            ]
-
-    # Удаляем временный уникальный идентификатор группы
-    filtered_df.drop(columns=["group_id"], inplace=True)
+    # Применяем синхронизацию цен для каждой уникальной группы
+    filtered_df = (
+        filtered_df.groupby("group_id").apply(sync_group).reset_index(drop=True)
+    )
 
     return filtered_df
 
@@ -289,7 +278,8 @@ def adjust_original_prices(filtered_df):
     pd.DataFrame: Обновленный датафрейм filtered_df со всеми корректировками цен.
     """
     # Группируем по gruppa_analogov
-    for gruppa, group_df in filtered_df.groupby("gruppa_analogov"):
+    for (gruppa, edizm), group_df in filtered_df.groupby(["gruppa_analogov", "edizm"]):
+
         # Отбираем оригинальные и неоригинальные позиции
         original_positions = group_df[group_df["is_original"] == True]
         non_original_positions = group_df[group_df["is_original"] == False]
