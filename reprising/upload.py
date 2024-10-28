@@ -3,7 +3,6 @@ import pandas as pd
 import os
 
 
-
 def regtament_view(filtered_df):
     """
     Функция для обработки filtered_df, оставляет колонки в заданной последовательности,
@@ -135,6 +134,7 @@ def regtament_view(filtered_df):
     return filtered_df
 
 
+
 def export_data(df):
     # Путь к основному и резервному местам для выгрузки
     primary_path = r"\\26.218.196.12\заказы\Евгений\Переоценка"
@@ -154,12 +154,12 @@ def export_data(df):
     df.to_excel(full_export_path, index=False, freeze_panes=(1, 0))
     print(f"Полные данные выгружены в {full_export_path}")
 
-    # Создание датафрейма с колонками Код и Новая цена
-    reduced_df = df[["Код", "Новая цена"]]
+    # Создание датафрейма с колонками Код и Новая цена, исключая последнюю строку
+    reduced_df = df[["Код", "Новая цена"]].iloc[:-1]
 
-    # Выгрузка файла с колонками Код и Новая цена
+    # Выгрузка файла с колонками Код и Новая цена без названий колонок и последней строки
     new_price_export_path = os.path.join(export_path, "НоваяЦена1С.xlsx")
-    reduced_df.to_excel(new_price_export_path, index=False)
+    reduced_df.to_excel(new_price_export_path, index=False, header=False)
     print(f"Данные с новой ценой выгружены в {new_price_export_path}")
 
 
