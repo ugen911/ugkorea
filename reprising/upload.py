@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import os
+
 
 
 def regtament_view(filtered_df):
@@ -131,3 +133,36 @@ def regtament_view(filtered_df):
     )
 
     return filtered_df
+
+
+def export_data(df):
+    # Путь к основному и резервному местам для выгрузки
+    primary_path = r"\\26.218.196.12\заказы\Евгений\Переоценка"
+    secondary_path = r"D:\NAS\заказы\Евгений\Переоценка"
+
+    # Проверка доступности путей
+    if os.path.exists(primary_path):
+        export_path = primary_path
+    elif os.path.exists(secondary_path):
+        export_path = secondary_path
+    else:
+        print("Ни один из путей не доступен.")
+        return
+
+    # Выгрузка полного датафрейма
+    full_export_path = os.path.join(export_path, "ПолныеДанные.xlsx")
+    df.to_excel(full_export_path, index=False, freeze_panes=(1, 0))
+    print(f"Полные данные выгружены в {full_export_path}")
+
+    # Создание датафрейма с колонками Код и Новая цена
+    reduced_df = df[["Код", "Новая цена"]]
+
+    # Выгрузка файла с колонками Код и Новая цена
+    new_price_export_path = os.path.join(export_path, "НоваяЦена1С.xlsx")
+    reduced_df.to_excel(new_price_export_path, index=False)
+    print(f"Данные с новой ценой выгружены в {new_price_export_path}")
+
+
+# Пример использования
+# df = pd.DataFrame(...)  # Загрузите или создайте свой датафрейм
+# export_data(df)

@@ -6,8 +6,9 @@ from ugkorea.reprising.uppricebyclass import adjust_prices_by_class
 from ugkorea.reprising.nonliquid import adjust_new_price_for_non_liquid, adjust_prices_without_delprice
 from ugkorea.reprising.inflation import indeksation
 from ugkorea.reprising.analogkonkurentbalance import main as rebalance
-from ugkorea.reprising.upload import regtament_view
+from ugkorea.reprising.upload import regtament_view, export_data
 from ugkorea.reprising.loaddata import exclude_kods_from_file
+
 
 # Подключаемся к базе данных
 engine = get_db_engine()
@@ -65,5 +66,6 @@ df_3 = rebalance(df_2, engine=engine)
 f = exclude_kods_from_file(df_3)
 
 
-regtament_views = regtament_view(filtered_df=f)
-regtament_views.to_excel("reglament_views.xlsx", index=False, freeze_panes=(1, 0))
+reglament_views = regtament_view(filtered_df=f)
+# regtament_views.to_excel("reglament_views.xlsx", index=False, freeze_panes=(1, 0))
+export_data(reglament_views)
