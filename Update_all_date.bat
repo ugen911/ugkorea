@@ -7,6 +7,7 @@ python -m reglament_task.update_price_stock_old
 echo From old prices update.
 python -m reglament_task.nomenk_class
 echo Nomenklatura classification ready.
+python -m reglament_task.delta_price_process
 python -m accessold.statisticforacc
 python -m accessold.stockend
 python -m accessold.priceendmonth
