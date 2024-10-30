@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 import numpy as np
-import openpyxl
+from openpyxl import load_workbook
 from datetime import datetime
 
 
@@ -182,9 +182,9 @@ def load_forreprice_data(engine):
 
 def exclude_kods_from_file(filtered_df):
     """
-    Функция для исключения позиций на основе файла 'Непереоценивать.xlsx'.
-    Пытается получить файл по двум указанным адресам. Если файл доступен, проводит
-    объединение с filtered_df и исключает позиции на основе найденных kod.
+    Функция для исключения позиций на основе файла 'Непереоценивать.xlsx', используя лист 'Код'.
+    Если файл доступен, проводит объединение с filtered_df и исключает позиции на основе найденных kod.
+    При этом сохраняются все листы и данные, включая 'Бренды' и 'Текст'.
 
     Parameters:
     filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
@@ -213,8 +213,8 @@ def exclude_kods_from_file(filtered_df):
         return filtered_df
 
     try:
-        # Загружаем данные из листа "Лист1", читая 'kod' как текст
-        df_to_exclude = pd.read_excel(file_path, sheet_name="Лист1", dtype={"kod": str})
+        # Загружаем данные с листа "Код", читая 'kod' как текст
+        df_to_exclude = pd.read_excel(file_path, sheet_name="Код", dtype={"kod": str})
 
         # Приводим колонку 'kod' к строковому типу и удаляем пробелы
         df_to_exclude["kod"] = df_to_exclude["kod"].astype(str).str.strip()
@@ -235,11 +235,14 @@ def exclude_kods_from_file(filtered_df):
                 df_to_exclude["kod"].isin(not_found_kods["kod"])
             ]
 
-            # Выгружаем файл обратно с текстовым форматом для всех колонок
+            # Загружаем все листы в словарь для сохранения их данных
             with pd.ExcelWriter(
-                file_path, engine="openpyxl", mode="a", if_sheet_exists="replace"
+                file_path, engine="openpyxl", mode="a", if_sheet_exists="overlay"
             ) as writer:
-                not_found_df.to_excel(writer, sheet_name="Лист1", index=False)
+                workbook = load_workbook(file_path)
+                workbook.remove(workbook["Код"])  # Удаляем лист "Код" для перезаписи
+                workbook.save(file_path)
+                not_found_df.to_excel(writer, sheet_name="Код", index=False)
             return filtered_df
 
         # Оставляем только те строки, где kod из df_to_exclude присутствует в filtered_df
@@ -250,12 +253,15 @@ def exclude_kods_from_file(filtered_df):
             ["kod", "artikul", "proizvoditel", "naimenovanie", "edizm", "datasozdanija"]
         ]
 
-        # Выгружаем отфильтрованный датафрейм обратно в файл
+        # Загружаем все листы из файла
         with pd.ExcelWriter(
-            file_path, engine="openpyxl", mode="a", if_sheet_exists="replace"
+            file_path, engine="openpyxl", mode="a", if_sheet_exists="overlay"
         ) as writer:
+            workbook = load_workbook(file_path)
+            workbook.remove(workbook["Код"])  # Удаляем лист "Код" для перезаписи
+            workbook.save(file_path)
             result_df.to_excel(
-                writer, sheet_name="Лист1", index=False, freeze_panes=(1, 0)
+                writer, sheet_name="Код", index=False, freeze_panes=(1, 0)
             )
 
         # Исключаем из filtered_df все строки, где kod присутствует в df_to_exclude
@@ -270,6 +276,60 @@ def exclude_kods_from_file(filtered_df):
         print(f"Ошибка при обработке файла: {e}")
 
     return filtered_df
+
+
+def load_brands_and_text():
+    """
+    Функция для поиска файла 'Непереоценивать.xlsx' по указанным путям.
+    Если файл найден, извлекает данные с листа 'Бренды' и 'Текст', если они существуют.
+
+    Returns:
+    tuple: Два списка - brands и text. Если файл не найден или лист отсутствует, возвращает пустые списки для отсутствующих листов.
+    """
+    # Пути к файлу
+    paths = [
+        r"D:\NAS\заказы\Непереоценивать.xlsx",
+        r"\\26.218.196.12\заказы\Непереоценивать.xlsx",
+    ]
+
+    # Попытка найти файл по одному из путей
+    file_path = None
+    for path in paths:
+        if os.path.exists(path):
+            file_path = path
+            break
+
+    # Если файл не найден, возвращаем пустые списки
+    if file_path is None:
+        print("Файл 'Непереоценивать.xlsx' не найден по указанным путям.")
+        return [], []
+
+    try:
+        # Проверяем, какие листы доступны в файле
+        xls = pd.ExcelFile(file_path)
+        sheet_names = xls.sheet_names
+
+        # Загружаем данные с листа 'Бренды' и преобразуем первую колонку в список
+        if "Бренды" in sheet_names:
+            brands_df = pd.read_excel(xls, sheet_name="Бренды", header=None)
+            brands = brands_df[0].dropna().astype(str).str.strip().tolist()
+        else:
+            print("Лист 'Бренды' не найден.")
+            brands = []
+
+        # Загружаем данные с листа 'Текст' и преобразуем первую колонку в список
+        if "Текст" in sheet_names:
+            text_df = pd.read_excel(xls, sheet_name="Текст", header=None)
+            text = text_df[0].dropna().astype(str).str.strip().tolist()
+        else:
+            print("Лист 'Текст' не найден.")
+            text = []
+
+        return brands, text
+
+    except Exception as e:
+        print(f"Ошибка при обработке файла: {e}")
+        return [], []
 
 
 # Проверка работы функции при запуске скрипта

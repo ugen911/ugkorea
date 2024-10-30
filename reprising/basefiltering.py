@@ -9,7 +9,7 @@ from ugkorea.reprising.lastpostuplenie import (
     calculate_last_postuplenija,
 )
 from ugkorea.reprising.getmedianprice import get_median_price_by_kod
-
+from ugkorea.reprising.loaddata import load_brands_and_text
 
 def prepare_filtered_data(engine):
     # Загружаем данные с ценами и остатками статистикой
@@ -46,19 +46,16 @@ def prepare_filtered_data(engine):
     filtered_df = filtered_df.merge(last_postuplenija_df, on="kod", how="left")
     filtered_df = filtered_df.merge(medianprice, on="kod", how="left")
 
-    # Убираем строки, где 'naimenovanie' содержит указанные фразы
-    phrases_to_exclude = [
-        "масло моторное", "масло трансмиссионное", "Антифриз", "Автокондиционер", 
-        "Автосигнализация", "Автоэлектрика", "Б/У", "Бутылка ПЭТ", "Ввертыш", 
-        "Вода дистиллированная", "Герметик", "Гильза силового провода", 
-        "Клемма силового провода", "Расходные материалы", "Эфир", "Турбина", "ТНВД", "Форсунка топливная", "Шиномонтаж"
-    ]
+    producers_to_exclude, phrases_to_exclude = load_brands_and_text()
 
+    # Убираем строки, где 'naimenovanie' содержит указанные фразы
+    
+    phrases_to_exclude
     pattern = '|'.join(phrases_to_exclude)
     filtered_df = filtered_df[~filtered_df['naimenovanie'].str.contains(pattern, case=False, na=False)]
 
     # Убираем строки, где 'proizvoditel' равен одному из указанных производителей
-    producers_to_exclude = ["Changan", "Chery", "Exeed", "Geely", "Haval", "Jetour", "Lixiang", "Omoda", "Tank"]
+    
 
     filtered_df = filtered_df[~filtered_df['proizvoditel'].str.contains('|'.join(producers_to_exclude), case=False, na=False)]
 
