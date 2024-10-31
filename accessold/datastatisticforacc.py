@@ -30,7 +30,8 @@ stockendmonth_df.rename(columns={"nomenklaturakod": "kod"}, inplace=True)
 # Функция для создания сводной таблицы за последние 20 месяцев и изменения названий колонок
 def create_pivot_table(df, kod_col, date_col, value_col, prefix):
     df[date_col] = pd.to_datetime(df[date_col])
-    latest_month = pd.to_datetime("now")  # Текущий месяц
+    # Сдвиг на конец предыдущего месяца, если вызывается в последний день месяца
+    latest_month = (pd.to_datetime("now").replace(day=1) - pd.DateOffset(days=1)).normalize()  # Текущий месяц
     # Создаем список из последних 20 месяцев, включая предыдущий месяц и уходя назад
     last_20_months = (
         pd.date_range(end=latest_month, periods=20, freq="ME")
