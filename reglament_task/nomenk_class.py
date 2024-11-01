@@ -134,6 +134,63 @@ def unify_types_with_analog_groups(df):
             df.loc[df['gruppa_analogov'] == name, 'type_detail'] = longest_type
     return df
 
+
+import pandas as pd
+
+
+def type_details(df):
+    # Отладочная печать для проверки типа переданного аргумента
+    print("Тип входного аргумента:", type(df))
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Ожидался объект DataFrame, получен: {}".format(type(df)))
+
+    # Отладочная печать для проверки структуры датафрейма
+    print("Структура входного датафрейма:")
+    print(df.head())
+
+    # Определяем замены для конкретных значений
+    replacements = {
+        "амортизатор задний маслян": "амортизатор задний",
+        "амортизатор задний масляный": "амортизатор задний",
+        "амортизатор передний левый": "амортизатор передний",
+        "амортизатор передний маслян": "амортизатор передний",
+        "амортизатор передний масляный": "амортизатор передний",
+        "вкладыши коренные масляного": "вкладыши коренные",
+        "генератор маслонасосе": "генератор",
+        "генератор ручейковый": "генератор",
+        "подшипник ступицы гросссбор": "подшипник ступицы",
+        "подшипник ступицы задний": "подшипник ступицы",
+        "подшипник ступицы передний": "подшипник ступицы",
+    }
+
+    # Выполняем замены для точных значений в type_detail
+    df["type_detail"] = df["type_detail"].replace(replacements)
+
+    # Применяем условия на уровне строки, чтобы изменить значения в type_detail
+    for index, row in df.iterrows():
+        # Условие для подстрок
+        if "болт крепления амортизатора" in row["type_detail"]:
+            df.at[index, "type_detail"] = "болт крепления амортизатора"
+        elif "болтэксцентрик задней поперечной тяги" in row["type_detail"]:
+            df.at[index, "type_detail"] = "болтэксцентрик задней поперечной тяги"
+        elif "болтэксцентрик нижнего рычага" in row["type_detail"]:
+            df.at[index, "type_detail"] = "болтэксцентрик нижнего рычага"
+        elif "втулка амортизатора" in row["type_detail"]:
+            df.at[index, "type_detail"] = "втулка амортизатора"
+        elif "втулка поперечного стабилизатора" in row["type_detail"]:
+            df.at[index, "type_detail"] = "втулка поперечного стабилизатора"
+        elif "герметикпрокладка" in row["type_detail"]:
+            df.at[index, "type_detail"] = "герметик"
+        elif row["type_detail"] == "датчик" and row["naimenovanie"].startswith(
+            "Датчик ABS"
+        ):
+            df.at[index, "type_detail"] = "датчик абс"
+        elif "направляющий стержень скобы суппорта" in row["type_detail"]:
+            df.at[index, "type_detail"] = "направляющий стержень скобы суппорта"
+
+    return df
+
+
 if __name__ == "__main__":
     # Получение двигателя БД
     engine = get_db_engine()
@@ -196,6 +253,9 @@ if __name__ == "__main__":
 
     # Приведение типов деталей товаров с одинаковыми gruppa_analogov к одному значению
     merged_df = unify_types_with_analog_groups(merged_df)
+
+    merged_df = type_details(merged_df)
+    merged_df.to_excel('merg.xlsx')
 
     # Подготовка DataFrame для выгрузки
     upload_df = merged_df[['kod', 'type_detail']]
