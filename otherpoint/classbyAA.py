@@ -1,3 +1,5 @@
+#### Считает продажи по классам выгружает в файл по убыванию
+
 import pandas as pd
 from ugkorea.db.database import get_db_engine
 from datetime import datetime, timedelta
