@@ -16,7 +16,19 @@ priceold = Table('priceold', metadata, autoload_with=engine)
 stockold = Table('stockold', metadata, autoload_with=engine)
 
 # Список брендов, которые нужно искать
-brands = ['CHERY', 'GEELY', 'CHANGAN', 'Haval', 'Exeed', 'Jetour', 'Omoda', 'Tank']
+brands = [
+    "CHERY",
+    "GEELY",
+    "CHANGAN",
+    "Haval",
+    "Exeed",
+    "Jetour",
+    "Omoda",
+    "Tank",
+    "Lixiang",
+    "Gac",
+    "Great Wall",
+]
 
 # Создаем условие для фильтрации с использованием оператора OR
 conditions = [nomenklatura.c.naimenovaniepolnoe.ilike(f"%{brand}%") for brand in brands]
