@@ -248,10 +248,11 @@ def exclude_kods_from_file(filtered_df):
         # Оставляем только те строки, где kod из df_to_exclude присутствует в filtered_df
         filtered_exclude = merged_df[merged_df["_merge"] == "both"]
 
-        # Выбираем нужные колонки для экспорта
+
         result_df = filtered_exclude[
             ["kod", "artikul", "proizvoditel", "naimenovanie", "edizm", "datasozdanija"]
-        ]
+        ].copy()
+        result_df["kod"] = result_df["kod"].astype(str)  # Преобразуем kod в текст
 
         # Загружаем все листы из файла
         with pd.ExcelWriter(
