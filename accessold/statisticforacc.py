@@ -16,9 +16,23 @@ prodazhi_df['period'] = pd.to_datetime(prodazhi_df['period'], format='%d.%m.%Y')
 # Добавляем колонку year_month для группировки по месяцам
 prodazhi_df['year_month'] = prodazhi_df['period'].dt.to_period('M')
 
-# Группируем данные по kod и year_month и суммируем kolichestvo и summa
-prodazhi_df['kolichestvo'] = pd.to_numeric(prodazhi_df['kolichestvo'], errors='coerce').fillna(0)
-prodazhi_df['summa'] = pd.to_numeric(prodazhi_df['summa'], errors='coerce').fillna(0)
+# Удаляем неразрывные пробелы \xa0, обычные пробелы и заменяем запятую на точку для корректного преобразования
+prodazhi_df["summa"] = (
+    prodazhi_df["summa"]
+    .astype(str)
+    .str.replace("\xa0", "", regex=True)  # Удаление неразрывных пробелов
+    .str.replace(" ", "")  # Удаление обычных пробелов
+    .str.replace(",", ".")  # Замена запятой на точку
+    .str.strip()
+)
+prodazhi_df["summa"] = pd.to_numeric(prodazhi_df["summa"], errors="coerce").fillna(0)
+
+# Убираем пробелы и преобразуем kolichestvo в числовой формат
+prodazhi_df["kolichestvo"] = prodazhi_df["kolichestvo"].astype(str).str.strip()
+prodazhi_df["kolichestvo"] = pd.to_numeric(
+    prodazhi_df["kolichestvo"], errors="coerce"
+).fillna(0)
+
 monthly_sales = prodazhi_df.groupby(['kod', 'year_month']).agg({
     'kolichestvo': 'sum',
     'summa': 'sum'
@@ -61,6 +75,15 @@ postuplenija_df['year_month'] = postuplenija_df['data'].dt.to_period('M')
 
 # Рассчитываем сумму (kolichestvo * tsena)
 postuplenija_df['kolichestvo'] = pd.to_numeric(postuplenija_df['kolichestvo'], errors='coerce').fillna(0)
+# Убираем пробелы и заменяем запятую на точку для корректного преобразования
+postuplenija_df["tsena"] = (
+    postuplenija_df["tsena"]
+    .astype(str)
+    .str.replace("\xa0", "", regex=True)  # Удаление неразрывных пробелов
+    .str.replace(" ", "")  # Удаление пробелов, используемых как разделители тысяч
+    .str.replace(",", ".")  # Замена запятой на точку
+    .str.strip()
+)
 postuplenija_df['tsena'] = pd.to_numeric(postuplenija_df['tsena'], errors='coerce').fillna(0)
 postuplenija_df['summa'] = postuplenija_df['kolichestvo'] * postuplenija_df['tsena']
 
