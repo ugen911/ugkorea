@@ -9,34 +9,7 @@ from ugkorea.reprising.getkonkurent import autocoreec_data
 engine = get_db_engine
 
 
-def service_percentup(df):
-    """
-    Применяет корректировку цены в зависимости от xyz, median_service_percent и tsenarozn.
-    """
 
-    def adjust_row(row):
-        xyz = row["xyz"]
-        median_service_percent = row.get("median_service_percent", np.nan)
-        tsenarozn = row.get("tsenarozn", np.nan)
-        new_price = row["new_price"]
-
-        # Проверка условий для корректировки
-        if (
-            xyz in ["X", "X1"]
-            and median_service_percent > 80
-            and not pd.isna(tsenarozn)
-        ):
-            if tsenarozn < 500:
-                new_price = np.ceil((new_price * 1.15) / 10) * 10
-            elif 500 <= tsenarozn < 1000:
-                new_price = np.ceil((new_price * 1.10) / 10) * 10
-            elif 1000 <= tsenarozn < 2000:
-                new_price = np.ceil((new_price * 1.05) / 10) * 10
-
-        return new_price
-
-    df["new_price"] = df.apply(adjust_row, axis=1)
-    return df
 
 
 def konkurents_correct(filtered_df, konkurents):
@@ -377,7 +350,6 @@ def main(filtered_df, engine):
         "# Применяем корректировку цен на основе xyz, median_service_percent и tsenarozn"
     )
 
-    filtered_df = service_percentup(filtered_df)
 
     konkurents = autocoreec_data(engine=engine)
 

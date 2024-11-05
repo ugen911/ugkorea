@@ -3,6 +3,7 @@ import os
 import numpy as np
 from openpyxl import load_workbook
 from datetime import datetime
+import re
 
 
 def load_forreprice_data(engine):
@@ -248,7 +249,6 @@ def exclude_kods_from_file(filtered_df):
         # Оставляем только те строки, где kod из df_to_exclude присутствует в filtered_df
         filtered_exclude = merged_df[merged_df["_merge"] == "both"]
 
-
         result_df = filtered_exclude[
             ["kod", "artikul", "proizvoditel", "naimenovanie", "edizm", "datasozdanija"]
         ].copy()
@@ -279,6 +279,39 @@ def exclude_kods_from_file(filtered_df):
     return filtered_df
 
 
+def filter_dataframe(df, brands, text):
+    """
+    Удаляет строки из датафрейма df, где в колонке proizvoditel находятся элементы из brands,
+    и строки, где в колонке naimenovanie содержатся строки из списка text.
+
+    Parameters:
+    df (pd.DataFrame): Исходный датафрейм для фильтрации.
+    brands (list): Список брендов для фильтрации из колонки proizvoditel.
+    text (list): Список текстовых строк для поиска в колонке naimenovanie.
+
+    Returns:
+    pd.DataFrame: Отфильтрованный датафрейм без строк с указанными брендами и текстовыми строками.
+    """
+    # Копируем датафрейм для сохранения исходных данных
+    df_filtered = df.copy()
+
+    # Удаление строк по списку brands, если список не пуст
+    if brands:
+        df_filtered = df_filtered[~df_filtered["proizvoditel"].isin(brands)]
+
+    # Удаление строк по списку text, если список не пуст
+    if text:
+        # Создаем шаблон для поиска подстрок из списка text, игнорируя регистр
+        pattern = "|".join(re.escape(txt) for txt in text)  # Экранируем спецсимволы
+        df_filtered = df_filtered[
+            ~df_filtered["naimenovanie"].str.contains(
+                pattern, case=False, regex=True, na=False
+            )
+        ]
+
+    return df_filtered
+
+
 def load_brands_and_text():
     """
     Функция для поиска файла 'Непереоценивать.xlsx' по указанным путям.
@@ -305,32 +338,37 @@ def load_brands_and_text():
         print("Файл 'Непереоценивать.xlsx' не найден по указанным путям.")
         return [], []
 
+    # Инициализируем пустые списки для brands и text
+    brands, text = [], []
+
     try:
         # Проверяем, какие листы доступны в файле
         xls = pd.ExcelFile(file_path)
         sheet_names = xls.sheet_names
 
-        # Загружаем данные с листа 'Бренды' и преобразуем первую колонку в список
+        # Загружаем данные с листа 'Бренды' и преобразуем первую колонку в список, если лист существует
         if "Бренды" in sheet_names:
             brands_df = pd.read_excel(xls, sheet_name="Бренды", header=None)
             brands = brands_df[0].dropna().astype(str).str.strip().tolist()
+            if not brands:
+                print("Лист 'Бренды' пуст.")
         else:
             print("Лист 'Бренды' не найден.")
-            brands = []
 
-        # Загружаем данные с листа 'Текст' и преобразуем первую колонку в список
+        # Загружаем данные с листа 'Текст' и преобразуем первую колонку в список, если лист существует
         if "Текст" in sheet_names:
             text_df = pd.read_excel(xls, sheet_name="Текст", header=None)
             text = text_df[0].dropna().astype(str).str.strip().tolist()
+            if not text:
+                print("Лист 'Текст' пуст.")
         else:
             print("Лист 'Текст' не найден.")
-            text = []
-
-        return brands, text
 
     except Exception as e:
         print(f"Ошибка при обработке файла: {e}")
-        return [], []
+
+    # Гарантируем возврат двух списков, даже если один или оба из них пусты
+    return brands, text
 
 
 # Проверка работы функции при запуске скрипта

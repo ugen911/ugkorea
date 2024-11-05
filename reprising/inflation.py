@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 
+import numpy as np
+import pandas as pd
+
 
 def indeksation(filtered_df, priceendmonth):
     """
@@ -13,54 +16,56 @@ def indeksation(filtered_df, priceendmonth):
     Returns:
     pd.DataFrame: Обновленный датафрейм filtered_df со всеми строками и корректировками цен.
     """
-    # Преобразуем колонку year_month в соответствующий формат
+    # Преобразуем колонку year_month в datetime для точного сравнения
     priceendmonth["year_month"] = pd.to_datetime(
         priceendmonth["year_month"], format="%Y-%m", errors="coerce"
     )
 
-    # Получаем текущую дату и дату ровно год назад (тот же месяц и день)
+    # Получаем текущую дату и месяц прошлого года
     current_date = pd.Timestamp.now()
-    last_year_same_month = (current_date - pd.DateOffset(years=1)).strftime("%Y-%m")
+    last_year_same_month = current_date - pd.DateOffset(years=1)
 
-    # Фильтруем строки, где new_price пустой или равен tsenarozn, и при этом delsklad и median_price должны быть пустыми
+    # Фильтруем строки в filtered_df, где new_price пустой или равен tsenarozn, и проверяем, что delsklad и median_price также пусты
     condition = (
         (filtered_df["new_price"].isna())
         | (filtered_df["new_price"] == filtered_df["tsenarozn"])
     ) & (filtered_df["delsklad"].isna() & filtered_df["median_price"].isna())
     filtered_positions = filtered_df[condition]
 
-    # Соединяем filtered_positions с priceendmonth по kod
+    # Соединяем filtered_positions с priceendmonth по 'kod' и извлекаем только нужный год и месяц
     merged = pd.merge(
-        filtered_positions,
-        priceendmonth,
-        left_on="kod",
-        right_on="kod",
-        suffixes=("", "_priceendmonth"),
+        filtered_positions, priceendmonth, on="kod", suffixes=("", "_priceendmonth")
     )
 
-    # Фильтруем данные, оставляя только строки с совпадением по year_month
-    merged = merged[merged["year_month"].dt.strftime("%Y-%m") == last_year_same_month]
+    # Отбираем строки, где 'year_month' в priceendmonth соответствует месяцу прошлого года
+    merged = merged[merged["year_month"].dt.year == last_year_same_month.year]
+    merged = merged[merged["year_month"].dt.month == last_year_same_month.month]
 
-    # Отладочная печать: сколько kod были найдены совпадения
+    # Отладочная печать: количество kod с совпадениями по месяцу прошлого года
     matching_kod_count = merged["kod"].nunique()
     print(
-        f"Количество kod, найденных с совпадением по year_month: {matching_kod_count}"
+        f"Количество kod, найденных с совпадением по месяцу прошлого года: {matching_kod_count}"
     )
 
-    # Добавляем колонку в filtered_df для хранения цены прошлого года, если ее еще нет
+    # Добавляем колонку 'price_last_year', если ее еще нет
     if "price_last_year" not in filtered_df.columns:
         filtered_df["price_last_year"] = np.nan
 
-    # Записываем цену прошлого года из merged в соответствующие строки filtered_df по 'kod'
+    # Добавляем колонку для каскадных наценок
+    if "is_indexed" not in filtered_df.columns:
+        filtered_df["is_indexed"] = False
+
+    # Обновляем 'price_last_year' в исходном DataFrame для позиций, которые нашли соответствие в прошлом году
     for kod, price_last_year in zip(merged["kod"], merged["tsena"]):
         filtered_df.loc[filtered_df["kod"] == kod, "price_last_year"] = price_last_year
 
-    # Вычисляем новую цену для каждой строки, если цена прошлого года совпадает с текущей
+    # Функция для расчета новой цены на основе условия
     def calculate_new_price(row):
         tsenarozn = row["tsenarozn"]
         price_last_year = row["price_last_year"]
 
-        if price_last_year == tsenarozn:
+        # Условие на совпадение с ценой прошлого года и отсутствие предыдущей индексации
+        if price_last_year == tsenarozn and not row["is_indexed"]:
             if tsenarozn <= 500:
                 return np.ceil((tsenarozn * 1.12) / 10) * 10
             elif tsenarozn <= 1000:
@@ -71,31 +76,43 @@ def indeksation(filtered_df, priceendmonth):
                 return np.ceil((tsenarozn * 1.05) / 10) * 10
             else:
                 return np.ceil((tsenarozn * 1.03) / 10) * 10
-        return row["new_price"]
+        return tsenarozn
 
-    # Применяем логику и считаем количество проиндексированных строк
+    # Применяем функцию расчета новой цены и отмечаем, какие строки были проиндексированы
     indexed_count = 0
     for index, row in filtered_df.iterrows():
-        if not pd.isna(row["price_last_year"]):
-            new_price = calculate_new_price(row)
-            if new_price != row["new_price"]:
-                filtered_df.at[index, "new_price"] = new_price
-                indexed_count += 1
+        if (
+            not pd.isna(row["price_last_year"])
+            and row["price_last_year"] == row["tsenarozn"]
+        ):
+            # Проверяем, что цена была изменена в течение года
+            recent_price_changes = priceendmonth[
+                (priceendmonth["kod"] == row["kod"])
+                & (priceendmonth["year_month"].dt.year == current_date.year)
+            ]
 
-    # Отладочная печать: сколько строк было проиндексировано
+            if recent_price_changes.empty:
+                new_price = calculate_new_price(row)
+                if new_price != row["new_price"]:
+                    filtered_df.at[index, "new_price"] = new_price
+                    filtered_df.at[index, "is_indexed"] = (
+                        True  # Отмечаем индексированные строки
+                    )
+                    indexed_count += 1
+
+    # Отладочная печать: количество строк, проиндексированных по цене
     print(f"Количество строк, проиндексированных по цене: {indexed_count}")
-
-    # Проверяем, остались ли пустые строки в new_price
-    empty_new_price_count = filtered_df["new_price"].isna().sum()
-    print(f"Количество строк с пустыми значениями new_price: {empty_new_price_count}")
 
     # Заполняем оставшиеся пустые значения "new_price" значениями из "tsenarozn"
     filtered_df["new_price"] = filtered_df["new_price"].fillna(filtered_df["tsenarozn"])
 
-    # Отладочная печать: проверка, сколько строк осталось с пустыми значениями
+    # Отладочная печать: проверка количества строк с пустыми значениями после заполнения
     final_empty_count = filtered_df["new_price"].isna().sum()
     print(
         f"Количество строк с пустыми значениями new_price после заполнения: {final_empty_count}"
     )
+
+    # Убираем колонку "is_indexed" перед возвратом, если она не нужна
+    filtered_df.drop(columns=["is_indexed"], inplace=True)
 
     return filtered_df

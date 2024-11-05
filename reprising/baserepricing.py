@@ -7,7 +7,11 @@ from ugkorea.reprising.nonliquid import adjust_new_price_for_non_liquid, adjust_
 from ugkorea.reprising.inflation import indeksation
 from ugkorea.reprising.analogkonkurentbalance import main as rebalance
 from ugkorea.reprising.upload import regtament_view, export_data
-from ugkorea.reprising.loaddata import exclude_kods_from_file
+from ugkorea.reprising.loaddata import (
+    exclude_kods_from_file,
+    load_brands_and_text,
+    filter_dataframe,
+)
 
 
 # Подключаемся к базе данных
@@ -62,8 +66,12 @@ df_3 = rebalance(df_2, engine=engine)
 # df_3.to_csv("filtered_df.csv")
 # Сделать увеличенную наценку если товар продается только в сервис добавить + вилку в цене на товары до 2000р
 
+print('- brands, texts')
+brand, text = load_brands_and_text()
+k = filter_dataframe(df_3, brand, text)
+
 # Убираем позиции из датафрейма которые не надо переоценивать
-f = exclude_kods_from_file(df_3)
+f = exclude_kods_from_file(k)
 
 
 reglament_views = regtament_view(filtered_df=f)
