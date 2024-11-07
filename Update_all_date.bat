@@ -12,7 +12,7 @@ python -m accessold.statisticforacc
 python -m accessold.stockend
 python -m accessold.priceendmonth
 echo statistic for end of month ready
-python -m reglament_task.dromsend
+REM python -m reglament_task.dromsend
 python -m otherpoint.bychinaevgeni
 python -m from_folder_to_df.mailru_utils
 python -m from_folder_to_df.prices_to_sql
