@@ -41,7 +41,7 @@ def correct_new_price_filters(df):
     # Применение условия для корректировки верхней границы new_price
     df.loc[mask, "new_price"] = np.where(
         df.loc[mask, "new_price"] > df.loc[mask, "tsenazakup"] * 1.2,
-        np.ceil(df.loc[mask, "tsenazakup"] * 1.2 / 10)
+        np.ceil(df.loc[mask, "tsenazakup"] * 2.2 / 10)
         * 10,  # Округление до 10 рублей вверх
         df.loc[mask, "new_price"],
     )
