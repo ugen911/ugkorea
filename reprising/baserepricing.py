@@ -12,6 +12,7 @@ from ugkorea.reprising.loaddata import (
     load_brands_and_text,
     filter_dataframe,
 )
+from ugkorea.reprising.dopcorrect import correct_new_price_filters
 
 
 # Подключаемся к базе данных
@@ -64,11 +65,12 @@ df_2 = indeksation(df_1, priceendmonth)
 print('rebalace...')
 df_3 = rebalance(df_2, engine=engine)
 # df_3.to_csv("filtered_df.csv")
-# Сделать увеличенную наценку если товар продается только в сервис добавить + вилку в цене на товары до 2000р
+
+df2 = correct_new_price_filters(df_3)
 
 print('- brands, texts')
 brand, text = load_brands_and_text()
-k = filter_dataframe(df_3, brand, text)
+k = filter_dataframe(df2, brand, text)
 
 # Убираем позиции из датафрейма которые не надо переоценивать
 f = exclude_kods_from_file(k)
