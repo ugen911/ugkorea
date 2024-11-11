@@ -88,9 +88,12 @@ def calculate_new_prices_for_api(
     new_price = np.select(
         [delprice <= 200, delprice <= 300, delprice >= 10000],
         [
-            np.ceil(delprice * 1.8 / 10) * 10,
-            np.ceil(delprice * 1.65 / 10) * 10,
-            np.ceil(delprice * 1.35 / 10) * 10,
+            # np.ceil(delprice * 1.8 / 10) * 10,
+            np.ceil(delprice * 2.05 / 10) * 10,
+            # np.ceil(delprice * 1.65 / 10) * 10,
+            np.ceil(delprice * 1.9 / 10) * 10,
+            #np.ceil(delprice * 1.35 / 10) * 10,
+            np.ceil(delprice * 1.6 / 10) * 10,
         ],
         default=np.nan,  # Все, что не попадает под условия, пока NaN
     )
@@ -205,7 +208,6 @@ def calculate_new_prices_for_api(
 
         filtered_df.at[index, "new_price"] = new_price
 
-
     # Дополнительная проверка на наценку в зависимости от delprice
     # Если delprice <= 200, то наценка должна быть не меньше 80%
     filtered_df.loc[condition_api & (delprice <= 200), "new_price"] = np.maximum(
@@ -218,7 +220,6 @@ def calculate_new_prices_for_api(
         filtered_df.loc[condition_api & (delprice >= 10000), "new_price"],
         np.ceil(delprice * 1.35 / 10) * 10,
     )
-
 
     # Применяем проверки только к строкам, где выполняется условие maxprice и middleprice
     condition_maxprice = (
