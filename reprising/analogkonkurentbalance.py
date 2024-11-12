@@ -9,9 +9,6 @@ from ugkorea.reprising.getkonkurent import autocoreec_data
 engine = get_db_engine
 
 
-
-
-
 def konkurents_correct(filtered_df, konkurents):
     konkurents = konkurents.rename(columns={"price": "konkurents"})
     df = pd.merge(filtered_df, konkurents[["kod", "konkurents"]], on="kod", how="left")
@@ -123,7 +120,10 @@ def sync_prices(filtered_df):
 
     return filtered_df
 
-#############До сюда сделано
+from datetime import datetime, timedelta
+import pandas as pd
+import numpy as np
+from sqlalchemy import text
 
 
 def update_rasprodat(filtered_df, engine):
@@ -143,7 +143,8 @@ def update_rasprodat(filtered_df, engine):
     try:
         rasprodat_df = pd.read_sql("SELECT * FROM rasprodat", engine)
         table_exists = True
-    except ProgrammingError:
+    except Exception as e:
+        print("Ошибка при попытке загрузить rasprodat:", e)
         rasprodat_df = pd.DataFrame(columns=["kod"])
         table_exists = False
 
@@ -154,13 +155,17 @@ def update_rasprodat(filtered_df, engine):
     # Группируем по gruppa_analogov и проверяем наличие продающихся и непродающихся позиций
     groups_to_remove = []
     for gruppa, group_df in filtered_df.groupby("gruppa_analogov"):
+        # Фильтруем только те группы, которые содержат kod "ЦБ020520" или "ЦБ022202" для отладки
+        if not any(kod in group_df["kod"].values for kod in ["ЦБ020520", "ЦБ022202"]):
+            continue
+
         # Определяем продающиеся и непродающиеся позиции
         selling_positions = group_df[
             group_df["abc"].isin(["A1", "A", "B"]) & group_df["xyz"].isin(["X1", "X"])
         ]
         non_selling_positions = group_df[
-            (group_df["abc"].isin(["C", None]))
-            & (group_df["xyz"].isin(["Y", "Z", None]))
+            ((group_df["abc"].isnull()) | group_df["abc"].str.strip().eq(""))
+            & ((group_df["xyz"].isnull()) | group_df["xyz"].str.strip().eq(""))
             & (
                 group_df["datasozdanija"].isna()
                 | (pd.to_datetime(group_df["datasozdanija"]) <= threshold_date)
@@ -169,7 +174,7 @@ def update_rasprodat(filtered_df, engine):
 
         # Проверяем, если есть и продающиеся, и непродающиеся позиции
         if not selling_positions.empty and not non_selling_positions.empty:
-            # Проходим по non_selling_positions и проверяем, есть ли позиции с таким же proizvoditel, но не в non_selling_positions
+            # Проходим по non_selling_positions и проверяем, есть ли позиции с таким же производителем, но не в non_selling_positions
             to_remove = []
             for idx, row in non_selling_positions.iterrows():
                 # Находим другие позиции с таким же производителем, но не в non_selling_positions

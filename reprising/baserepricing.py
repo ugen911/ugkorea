@@ -59,7 +59,7 @@ df_1 = adjust_prices_without_delprice(res)
 # ПРоверяем изменение цен по месяцам в priceendmonth и stockendmonth должны быть положительные если все таки new_price до сих под пуст должны обеспечить индексацию товаров на 7% год если товар не дорогостоящий не выше 5000 рублей в розницу если выше пусть считает 3 наценки считает смотря на изменение цен в priceandmonth и нацениеваем на срок
 print("inflation")
 df_2 = indeksation(df_1, priceendmonth)
-# df_2.to_csv("filtered_df.csv")
+#df_2.to_csv("filtered_df.csv")
 
 # Преверяем цены у конкурентов, пытаемся подняться или спуститься под них
 

@@ -6,6 +6,6 @@ import os
 # Подключение к базе данных
 engine = get_db_engine()
 
-salespivot_df = pd.read_sql("SELECT * FROM salespivot", engine)
+salespivot_df = pd.read_sql("SELECT * FROM rasprodat", engine)
 
-salespivot_df.to_csv("salespivot_df.csv")
+salespivot_df.to_csv("rasprodat_df.csv")
