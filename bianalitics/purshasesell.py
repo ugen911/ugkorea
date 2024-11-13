@@ -1,5 +1,5 @@
 from ugkorea.db.database import get_db_engine
-from ugkorea.excelanalitics.generalloaddata import load_foranalitics_data
+from ugkorea.bianalitics.generalloaddata import load_foranalitics_data
 import pandas as pd
 
 engine = get_db_engine()
