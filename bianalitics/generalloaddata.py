@@ -123,13 +123,22 @@ def load_foranalitics_data(engine):
         return df
 
     postuplenija_query = """
-    SELECT kod, data, tsena, kolichestvo, hozoperatsija, kontragent
+    SELECT ssylka, kod, data, tsena, kolichestvo, hozoperatsija, kontragent
     FROM postuplenija
     WHERE proveden = 'Да' 
     """
     postuplenija_df = load_and_normalize_table(postuplenija_query)
-
     postuplenija_df = clean_and_convert_to_float(postuplenija_df, 'tsena')
+    postuplenija_df["kolichestvo"] = postuplenija_df["kolichestvo"].astype(float)
+
+    korrektirovki_query = """
+    SELECT ssylka, kod, data, tsena, kolichestvo, hozoperatsija, dokumentosnovanie
+    FROM korrektirovki
+    WHERE proveden = 'Да' 
+    """
+    korrektirovki_df = load_and_normalize_table(korrektirovki_query)
+    korrektirovki_df = clean_and_convert_to_float(korrektirovki_df, "tsena")
+    korrektirovki_df["kolichestvo"] = korrektirovki_df["kolichestvo"].astype(float)
 
     # Загрузка данных из таблиц prodazhi и realizatsija и объединение
     prodaja_query = """
@@ -178,7 +187,7 @@ def load_foranalitics_data(engine):
     )
 
     # Загрузка таблицы avtoraboty_zakaznarjad
-    avtoraboty_query = "SELECT avtorabota, tsena, kolichestvo, sostojanie, kontragent, vidremonta, identifikatorraboty, ssylka FROM avtoraboty_zakaznarjad"
+    avtoraboty_query = "SELECT avtorabota, tsena, kolichestvo, sostojanie, kontragent, vidremonta, identifikatorraboty, marka, model, vin, ssylka FROM avtoraboty_zakaznarjad"
     avtoraboty_df = load_and_normalize_table(avtoraboty_query)
     avtoraboty_df = clean_and_convert_to_float(avtoraboty_df, "tsena")
     avtoraboty_df["kolichestvo"] = avtoraboty_df["kolichestvo"].astype(float)
@@ -256,4 +265,4 @@ def load_foranalitics_data(engine):
     filtered_df = filtered_df.drop_duplicates()
 
     # Возвращаем все датафреймы
-    return (filtered_df, postuplenija_df, prodaja_df)
+    return (filtered_df, postuplenija_df, prodaja_df, korrektirovki_df)
