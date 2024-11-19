@@ -65,8 +65,8 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
             price_diff = correction_price - supply_price
             quantity_diff = correction_quantity - supply_quantity
 
-            # Отладочная печать для конкретных строк
-            if kod in ["ЦБ023078", "ЦБ007278"]:
+            # Отладочная печать только для кода ЦБ007278
+            if kod == "ЦБ007278":
                 print(f"Отладка для kода {kod}:")
                 print(f"Документ поступления: {supply_row['ssylka']}")
                 print(f"Документ корректировки: {correction_row['ssylka']}")
@@ -78,17 +78,41 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
                 )
                 print(f"Разница — Цена: {price_diff}, Количество: {quantity_diff}")
 
-            # Если есть изменения в цене или количестве, добавляем строку
+            # Добавляем строку в итоговый датафрейм, если есть изменения
             if price_diff != 0 or quantity_diff != 0:
+                # Убедимся, что изменения фиксируются только один раз
                 row = correction_row.copy()
-                row["izmenenie_ceny"] = (
-                    float(price_diff) if price_diff != 0 else 0
-                )  # Явное приведение
-                row["izmenenie_kolichestva"] = (
-                    float(quantity_diff) if quantity_diff != 0 else 0
-                )  # Явное приведение
+                row["izmenenie_ceny"] = price_diff
+                row["izmenenie_kolichestva"] = quantity_diff
                 result_df = pd.concat(
                     [result_df, pd.DataFrame([row])], ignore_index=True
                 )
+
+    # Отладочная выборка из результата только для кода ЦБ007278 с нужными колонками
+    debug_selection = result_df[result_df["kod"] == "ЦБ007278"][
+        ["ssylka", "dokumentosnovanie", "izmenenie_ceny", "izmenenie_kolichestva"]
+    ]
+    print("\nОтладочная выборка из результирующего датафрейма для кода ЦБ007278:")
+    print(debug_selection)
+
+    # Удаляем строки, где `izmenenie_kolichestva` пустое
+    result_df = result_df.dropna(subset=["izmenenie_kolichestva"])
+
+    # Удаляем ненужные колонки
+    columns_to_remove = [
+        "tsena",
+        "kolichestvo",
+        "hozoperatsija",
+        "kontragent",
+        "naimenovanie",
+        "proizvoditel",
+        "vidnomenklatury",
+        "type_detail",
+        "gruppa_analogov",
+    ]
+    result_df = result_df.drop(
+        columns=[col for col in columns_to_remove if col in result_df.columns],
+        errors="ignore",
+    )
 
     return result_df
