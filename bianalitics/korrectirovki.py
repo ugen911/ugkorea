@@ -68,6 +68,8 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
             # Отладочная печать для конкретных строк
             if kod in ["ЦБ023078", "ЦБ007278"]:
                 print(f"Отладка для kода {kod}:")
+                print(f"Документ поступления: {supply_row['ssylka']}")
+                print(f"Документ корректировки: {correction_row['ssylka']}")
                 print(
                     f"Поступления — Цена: {supply_price}, Количество: {supply_quantity}"
                 )
@@ -79,8 +81,12 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
             # Если есть изменения в цене или количестве, добавляем строку
             if price_diff != 0 or quantity_diff != 0:
                 row = correction_row.copy()
-                row["izmenenie_ceny"] = price_diff
-                row["izmenenie_kolichestva"] = quantity_diff
+                row["izmenenie_ceny"] = (
+                    float(price_diff) if price_diff != 0 else 0
+                )  # Явное приведение
+                row["izmenenie_kolichestva"] = (
+                    float(quantity_diff) if quantity_diff != 0 else 0
+                )  # Явное приведение
                 result_df = pd.concat(
                     [result_df, pd.DataFrame([row])], ignore_index=True
                 )
