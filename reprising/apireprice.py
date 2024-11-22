@@ -221,27 +221,24 @@ def calculate_new_prices_for_api(
         np.ceil(delprice * 1.35 / 10) * 10,
     )
 
-    # Применяем проверки только к строкам, где выполняется условие maxprice и middleprice
-    condition_maxprice = (
-        condition_api
-        & maxprice.notna()
-        & (filtered_df.loc[condition_api, "new_price"] < maxprice * 1.1)
-    )
-    condition_middleprice = (
-        condition_api
-        & middleprice.notna()
-        & (filtered_df.loc[condition_api, "new_price"] < middleprice * 1.3)
+    # Проверка: new_price должно быть >= maxprice + 10% И >= middleprice + 30%
+    condition_price_correction = (
+        filtered_df["maxprice"].notna()
+        & filtered_df["middleprice"].notna()
+        & (
+            (filtered_df["new_price"] < filtered_df["maxprice"] * 1.1)  # Если new_price меньше maxprice + 10%
+            | (filtered_df["new_price"] < filtered_df["middleprice"] * 1.3)  # Или меньше middleprice + 30%
+        )
     )
 
-    # Проверки на maxprice
-    filtered_df.loc[condition_maxprice, "new_price"] = (
-        np.ceil(maxprice[condition_maxprice] * 1.1 / 10) * 10
+    # Корректируем new_price: берем большее из maxprice + 10% и middleprice + 30%
+    filtered_df.loc[condition_price_correction, "new_price"] = np.maximum(
+        np.ceil(filtered_df.loc[condition_price_correction, "maxprice"] * 1.1 / 10) * 10,  # maxprice + 10%
+        np.ceil(filtered_df.loc[condition_price_correction, "middleprice"] * 1.3 / 10) * 10,  # middleprice + 30%
     )
 
-    # Проверки на middleprice
-    filtered_df.loc[condition_middleprice, "new_price"] = (
-        np.ceil(middleprice[condition_middleprice] * 1.3 / 10) * 10
-    )
+
+
 
     # Возвращаем обновленный filtered_df
     return filtered_df
