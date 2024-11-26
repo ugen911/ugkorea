@@ -5,12 +5,12 @@ import pandas as pd
 
 engine = get_db_engine()
 
-filtered_df, postuplenija_df, prodaja_df, korrektirovki_df = load_foranalitics_data(
+nomenklatura, postuplenija_df, prodaja, korrektirovki_df = load_foranalitics_data(
     engine=engine
 )
 
-korrektirovki = process_corrections_and_supplies(korrektirovki_df, postuplenija_df)
+postuplenija = process_corrections_and_supplies(korrektirovki_df, postuplenija_df)
 
-korrektirovki.to_excel('korrect.xlsx')
+postuplenija.to_excel("korrect.xlsx")
 
 postuplenija_df.to_excel("postuplenija_df.xlsx")

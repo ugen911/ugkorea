@@ -75,7 +75,32 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
                 )
 
     # Обработка дополнительных условий
+    processed_rows = set()  # Отслеживание уже обработанных строк
     for index, row in result_df.iterrows():
+        # Условие 4.1: Цена и количество уменьшаются до 0
+        if (
+            row["tsena"] > 0
+            and row["kolichestvo"] > 0
+            and row["izmenenie_ceny"] == -row["tsena"]
+            and row["izmenenie_kolichestva"] == -row["kolichestvo"]
+        ):
+            result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
+            processed_rows.add(index)  # Отмечаем строку как обработанную
+
+        # Условие 4.2: Цена и количество остаются без изменений
+        elif (
+            row["tsena"] > 0
+            and row["kolichestvo"] > 0
+            and row["izmenenie_ceny"] == row["tsena"]
+            and row["izmenenie_kolichestva"] == row["kolichestvo"]
+        ):
+            processed_rows.add(index)  # Отмечаем строку как обработанную
+
+    # Применяем остальные условия только к необработанным строкам
+    for index, row in result_df.iterrows():
+        if index in processed_rows:
+            continue  # Пропускаем обработанные строки
+
         # Условие 1
         if (
             pd.isna(row["kolichestvo"])
@@ -84,7 +109,7 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
         ):
             result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
 
-        # Условие 2 (обновлено)
+        # Условие 2
         if (
             row["kolichestvo"] > 0
             and (row["izmenenie_kolichestva"] > 0 or row["izmenenie_kolichestva"] < 0)
@@ -92,21 +117,11 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
         ):
             result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
 
-
         # Условие 3
         if row["izmenenie_ceny"] != 0 and row["izmenenie_kolichestva"] == 0:
             result_df.at[index, "tsena"] = row["izmenenie_ceny"]
 
-        # Условие 4
-        if (
-            row["tsena"] > 0
-            and row["kolichestvo"] > 0
-            and row["izmenenie_ceny"] == -row["tsena"]
-            and row["izmenenie_kolichestva"] == -row["kolichestvo"]
-        ):
-            result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
-
-        # Новое условие 5
+        # Условие 5
         if (
             row["kolichestvo"] > 0
             and row["izmenenie_kolichestva"] < 0
@@ -119,7 +134,7 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
                 else row["tsena"] - abs(row["izmenenie_ceny"])
             )
 
-        # Новое условие 6
+        # Условие 6
         if (
             row["kolichestvo"] > 0
             and row["izmenenie_kolichestva"] > 0
@@ -131,10 +146,6 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
                 if row["izmenenie_ceny"] >= 0
                 else row["tsena"] - abs(row["izmenenie_ceny"])
             )
-
-        # Новое условие 7
-        if row["izmenenie_kolichestva"] == 0 and row["izmenenie_ceny"] != 0:
-            result_df.at[index, "tsena"] = row["izmenenie_ceny"]
 
     # Удаляем строки, где `izmenenie_kolichestva` пустое
     result_df = result_df.dropna(subset=["izmenenie_kolichestva"])
@@ -148,10 +159,17 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
         "vidnomenklatury",
         "type_detail",
         "gruppa_analogov",
+        "izmenenie_ceny",
+        "izmenenie_kolichestva"
     ]
     result_df = result_df.drop(
         columns=[col for col in columns_to_remove if col in result_df.columns],
         errors="ignore",
     )
 
-    return result_df
+    # Перенос данных из result_df в supplies_df
+    updated_supplies = pd.concat([supplies_df, result_df], ignore_index=True)
+    updated_supplies = updated_supplies.sort_values(by="data").reset_index(drop=True)
+    updated_supplies = updated_supplies.drop_duplicates().reset_index(drop=True)
+
+    return updated_supplies
