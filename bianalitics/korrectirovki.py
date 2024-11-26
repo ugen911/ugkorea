@@ -172,4 +172,51 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
     updated_supplies = updated_supplies.sort_values(by="data").reset_index(drop=True)
     updated_supplies = updated_supplies.drop_duplicates().reset_index(drop=True)
 
+    # Обновляем kontragent после объединения
+    for index, row in updated_supplies.iterrows():
+        if pd.notna(row["dokumentosnovanie"]) and pd.isna(row["kontragent"]):
+            # Поиск строки, где dokumentosnovanie совпадает с ssylka
+            matching_row = updated_supplies[
+                updated_supplies["ssylka"] == row["dokumentosnovanie"]
+            ]
+            if not matching_row.empty:
+                # Заполняем kontragent значением из найденной строки
+                updated_supplies.at[index, "kontragent"] = matching_row.iloc[0][
+                    "kontragent"
+                ]
+
+    # Заполняем пустые поля на основе kod
+    for index, row in updated_supplies.iterrows():
+        if (
+            pd.isna(row["naimenovanie"])
+            or pd.isna(row["proizvoditel"])
+            or pd.isna(row["vidnomenklatury"])
+            or pd.isna(row["type_detail"])
+            or pd.isna(row["gruppa_analogov"])
+        ):
+            matching_row = updated_supplies[
+                (updated_supplies["kod"] == row["kod"])
+                & pd.notna(updated_supplies["naimenovanie"])
+                & pd.notna(updated_supplies["proizvoditel"])
+                & pd.notna(updated_supplies["vidnomenklatury"])
+                & pd.notna(updated_supplies["type_detail"])
+                & pd.notna(updated_supplies["gruppa_analogov"])
+            ]
+            if not matching_row.empty:
+                first_match = matching_row.iloc[0]
+                updated_supplies.at[index, "naimenovanie"] = first_match["naimenovanie"]
+                updated_supplies.at[index, "proizvoditel"] = first_match["proizvoditel"]
+                updated_supplies.at[index, "vidnomenklatury"] = first_match[
+                    "vidnomenklatury"
+                ]
+                updated_supplies.at[index, "type_detail"] = first_match["type_detail"]
+                updated_supplies.at[index, "gruppa_analogov"] = first_match[
+                    "gruppa_analogov"
+                ]
+
+    # Заполняем пустые hozoperatsija
+    updated_supplies["hozoperatsija"] = updated_supplies["hozoperatsija"].fillna(
+        "Корректировка поступления"
+    )
+
     return updated_supplies
