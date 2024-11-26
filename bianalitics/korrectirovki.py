@@ -100,8 +100,6 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
 
     # Удаляем ненужные колонки
     columns_to_remove = [
-        "tsena",
-        "kolichestvo",
         "hozoperatsija",
         "kontragent",
         "naimenovanie",
