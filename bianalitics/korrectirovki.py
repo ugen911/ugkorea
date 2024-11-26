@@ -65,22 +65,8 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
             price_diff = correction_price - supply_price
             quantity_diff = correction_quantity - supply_quantity
 
-            # Отладочная печать только для кода ЦБ007278
-            if kod == "ЦБ007278":
-                print(f"Отладка для kода {kod}:")
-                print(f"Документ поступления: {supply_row['ssylka']}")
-                print(f"Документ корректировки: {correction_row['ssylka']}")
-                print(
-                    f"Поступления — Цена: {supply_price}, Количество: {supply_quantity}"
-                )
-                print(
-                    f"Корректировка — Цена: {correction_price}, Количество: {correction_quantity}"
-                )
-                print(f"Разница — Цена: {price_diff}, Количество: {quantity_diff}")
-
             # Добавляем строку в итоговый датафрейм, если есть изменения
             if price_diff != 0 or quantity_diff != 0:
-                # Убедимся, что изменения фиксируются только один раз
                 row = correction_row.copy()
                 row["izmenenie_ceny"] = price_diff
                 row["izmenenie_kolichestva"] = quantity_diff
@@ -88,12 +74,67 @@ def process_corrections_and_supplies(corrections_df, supplies_df):
                     [result_df, pd.DataFrame([row])], ignore_index=True
                 )
 
-    # Отладочная выборка из результата только для кода ЦБ007278 с нужными колонками
-    debug_selection = result_df[result_df["kod"] == "ЦБ007278"][
-        ["ssylka", "dokumentosnovanie", "izmenenie_ceny", "izmenenie_kolichestva"]
-    ]
-    print("\nОтладочная выборка из результирующего датафрейма для кода ЦБ007278:")
-    print(debug_selection)
+    # Обработка дополнительных условий
+    for index, row in result_df.iterrows():
+        # Условие 1
+        if (
+            pd.isna(row["kolichestvo"])
+            and row["izmenenie_ceny"] == 0
+            and row["izmenenie_kolichestva"] < 0
+        ):
+            result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
+
+        # Условие 2 (обновлено)
+        if (
+            row["kolichestvo"] > 0
+            and (row["izmenenie_kolichestva"] > 0 or row["izmenenie_kolichestva"] < 0)
+            and row["izmenenie_ceny"] == 0
+        ):
+            result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
+
+
+        # Условие 3
+        if row["izmenenie_ceny"] != 0 and row["izmenenie_kolichestva"] == 0:
+            result_df.at[index, "tsena"] = row["izmenenie_ceny"]
+
+        # Условие 4
+        if (
+            row["tsena"] > 0
+            and row["kolichestvo"] > 0
+            and row["izmenenie_ceny"] == -row["tsena"]
+            and row["izmenenie_kolichestva"] == -row["kolichestvo"]
+        ):
+            result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
+
+        # Новое условие 5
+        if (
+            row["kolichestvo"] > 0
+            and row["izmenenie_kolichestva"] < 0
+            and row["izmenenie_ceny"] != 0
+        ):
+            result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
+            result_df.at[index, "tsena"] = (
+                row["tsena"] + row["izmenenie_ceny"]
+                if row["izmenenie_ceny"] >= 0
+                else row["tsena"] - abs(row["izmenenie_ceny"])
+            )
+
+        # Новое условие 6
+        if (
+            row["kolichestvo"] > 0
+            and row["izmenenie_kolichestva"] > 0
+            and row["izmenenie_ceny"] != 0
+        ):
+            result_df.at[index, "kolichestvo"] = row["izmenenie_kolichestva"]
+            result_df.at[index, "tsena"] = (
+                row["tsena"] + row["izmenenie_ceny"]
+                if row["izmenenie_ceny"] >= 0
+                else row["tsena"] - abs(row["izmenenie_ceny"])
+            )
+
+        # Новое условие 7
+        if row["izmenenie_kolichestva"] == 0 and row["izmenenie_ceny"] != 0:
+            result_df.at[index, "tsena"] = row["izmenenie_ceny"]
 
     # Удаляем строки, где `izmenenie_kolichestva` пустое
     result_df = result_df.dropna(subset=["izmenenie_kolichestva"])
