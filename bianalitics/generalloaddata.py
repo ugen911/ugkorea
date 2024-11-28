@@ -264,5 +264,32 @@ def load_foranalitics_data(engine):
     postuplenija_df = postuplenija_df.drop_duplicates()
     filtered_df = filtered_df.drop_duplicates()
 
+    # Условие 1: Если hozoperatsija = "Реализация товаров" и rs_zakaznarjad не пустое
+    prodaja_df.loc[
+        (prodaja_df["hozoperatsija"] == "Реализация товаров")
+        & prodaja_df["rs_zakaznarjad"].notna(),
+        "hozoperatsija",
+    ] = "Заказ-наряд"
+
+    # Условие 2: Если rs_zakaznarjad не пустое и vidnomenklatury = "Товар"
+    # Создаем вспомогательный DataFrame для быстрого поиска
+    valid_matches = prodaja_df[prodaja_df["ispolnitel"].notna()][
+        ["dokumentprodazhi", "ispolnitel"]
+    ].drop_duplicates()
+
+    # Используем map для быстрого сопоставления
+    mapping_dict = valid_matches.set_index("dokumentprodazhi")["ispolnitel"].to_dict()
+    prodaja_df["mapped_ispolnitel"] = prodaja_df["rs_zakaznarjad"].map(mapping_dict)
+
+    # Обновляем колонку ispolnitel только там, где rs_zakaznarjad не пустое и vidnomenklatury = "Товар"
+    prodaja_df.loc[
+        (prodaja_df["rs_zakaznarjad"].notna())
+        & (prodaja_df["vidnomenklatury"] == "Товар"),
+        "ispolnitel",
+    ] = prodaja_df["mapped_ispolnitel"]
+
+    # Удаляем временную колонку
+    prodaja_df.drop(columns=["mapped_ispolnitel"], inplace=True)
+
     # Возвращаем все датафреймы
     return (filtered_df, postuplenija_df, prodaja_df, korrektirovki_df)
