@@ -6,6 +6,7 @@ from openpyxl import load_workbook
 from datetime import datetime
 import re
 
+
 def load_foranalitics_data(engine):
     # Функция для приведения значений к одному регистру и удаления пробелов
     def normalize_kod_column(df, column="kod"):
@@ -17,7 +18,9 @@ def load_foranalitics_data(engine):
 
     def load_and_normalize_table(query, column="kod"):
         df = pd.read_sql(query, engine)
-        df = normalize_kod_column(df, column)  # Нормализация с проверкой наличия колонки
+        df = normalize_kod_column(
+            df, column
+        )  # Нормализация с проверкой наличия колонки
         return df
 
     # Загрузка данных с нормализацией
@@ -106,20 +109,26 @@ def load_foranalitics_data(engine):
     # Сортировка по алфавиту в колонке naimenovanie
     filtered_df = merged_df.sort_values(by="naimenovanie")
 
+    filtered_df = filtered_df.drop_duplicates()
+
     def clean_and_convert_to_float(df, column_name):
         df[column_name] = (
             df[column_name]
             .astype(str)
             .str.strip()
-            .replace(['', ' '], '0')  # Заменяем пустые строки и строки с пробелами на '0'
-            .str.replace(r'[^\d,.-]', '', regex=True)
-            .str.replace(',', '.')
+            .replace(
+                ["", " "], "0"
+            )  # Заменяем пустые строки и строки с пробелами на '0'
+            .str.replace(r"[^\d,.-]", "", regex=True)
+            .str.replace(",", ".")
         )
-        df[column_name] = pd.to_numeric(df[column_name], errors='coerce').fillna(0.0)
+        df[column_name] = pd.to_numeric(df[column_name], errors="coerce").fillna(0.0)
         return df
 
     def convert_period_to_date(df, column_name):
-        df[column_name] = pd.to_datetime(df[column_name], errors='coerce', dayfirst=True)
+        df[column_name] = pd.to_datetime(
+            df[column_name], errors="coerce", dayfirst=True
+        )
         return df
 
     postuplenija_query = """
@@ -128,7 +137,7 @@ def load_foranalitics_data(engine):
     WHERE proveden = 'Да' 
     """
     postuplenija_df = load_and_normalize_table(postuplenija_query)
-    postuplenija_df = clean_and_convert_to_float(postuplenija_df, 'tsena')
+    postuplenija_df = clean_and_convert_to_float(postuplenija_df, "tsena")
     postuplenija_df["kolichestvo"] = postuplenija_df["kolichestvo"].astype(float)
 
     korrektirovki_query = """
@@ -154,22 +163,37 @@ def load_foranalitics_data(engine):
 
     # Очистка полей от пробелов и непечатных символов перед объединением
     prodaja_df["dokumentprodazhi"] = prodaja_df["dokumentprodazhi"].str.strip()
-    realizatsija_df["dokumentprodazhi"] = realizatsija_df["dokumentprodazhi"].str.strip()
+    realizatsija_df["dokumentprodazhi"] = realizatsija_df[
+        "dokumentprodazhi"
+    ].str.strip()
     prodaja_df["kod"] = prodaja_df["kod"].str.strip()
     realizatsija_df["kod"] = realizatsija_df["kod"].str.strip()
+
+    # Преобразование и очистка полей в prodaja_df
+    prodaja_df = clean_and_convert_to_float(prodaja_df, "summa")
+    prodaja_df = convert_period_to_date(prodaja_df, "period")
+    prodaja_df = clean_and_convert_to_float(prodaja_df, "kolichestvo")
+
+    # Группировка по указанным колонкам и суммирование kolichestvo и summa
+    prodaja_df = prodaja_df.groupby(
+        [
+            "kod",
+            "period",
+            "hozoperatsija",
+            "pokupatel",
+            "dokumentprodazhi",
+            "skladkompanii",
+        ],
+        as_index=False,
+    ).agg({"kolichestvo": "sum", "summa": "sum"})
 
     # Левое объединение prodazhi и realizatsija
     prodaja_df = prodaja_df.merge(
         realizatsija_df,
         left_on=["dokumentprodazhi", "kod"],
         right_on=["dokumentprodazhi", "kod"],
-        how="left"
+        how="left",
     )
-
-    # Преобразование и очистка полей в prodaja_df
-    prodaja_df = clean_and_convert_to_float(prodaja_df, "summa")
-    prodaja_df = convert_period_to_date(prodaja_df, "period")
-    prodaja_df = clean_and_convert_to_float(prodaja_df, "kolichestvo")
 
     # Перенос данных из filtered_df в prodaja_df по полю kod
     additional_fields = [
@@ -182,14 +206,16 @@ def load_foranalitics_data(engine):
     prodaja_df = prodaja_df.merge(
         filtered_df[["kod"] + additional_fields], on="kod", how="left"
     )
+
     postuplenija_df = postuplenija_df.merge(
         filtered_df[["kod"] + additional_fields], on="kod", how="left"
     )
 
     # Загрузка таблицы avtoraboty_zakaznarjad
-    avtoraboty_query = "SELECT avtorabota, tsena, kolichestvo, sostojanie, kontragent, vidremonta, identifikatorraboty, marka, model, vin, ssylka FROM avtoraboty_zakaznarjad"
+    avtoraboty_query = "SELECT data, avtorabota, tsena, kolichestvo, sostojanie, kontragent, vidremonta, identifikatorraboty, marka, model, vin, ssylka, avtor FROM avtoraboty_zakaznarjad"
     avtoraboty_df = load_and_normalize_table(avtoraboty_query)
     avtoraboty_df = clean_and_convert_to_float(avtoraboty_df, "tsena")
+    avtoraboty_df = convert_period_to_date(avtoraboty_df, "data")
     avtoraboty_df["kolichestvo"] = avtoraboty_df["kolichestvo"].astype(float)
     avtoraboty_df["summa"] = avtoraboty_df["kolichestvo"] * avtoraboty_df["tsena"]
     avtoraboty_df.drop(columns="tsena", inplace=True)
@@ -200,69 +226,96 @@ def load_foranalitics_data(engine):
 
     ispolniteli_df = load_and_normalize_table(ispolniteli_query)
 
+    # Агрегация исполнителей для каждой работы
+    ispolniteli_df = (
+        ispolniteli_df.groupby(["ssylka", "identifikatorraboty"])["ispolnitel"]
+        .apply(", ".join)
+        .reset_index()
+    )
+
     # Объединение avtoraboty_df и ispolniteli_df
     avtoraboty_df = avtoraboty_df.merge(
         ispolniteli_df, on=["ssylka", "identifikatorraboty"], how="left"
     )
 
-    # Объединение avtoraboty_df с prodaja_df
-    prodaja_df = prodaja_df.merge(
-        avtoraboty_df,
-        left_on=["dokumentprodazhi", "kolichestvo", "summa"],
-        right_on=["ssylka", "kolichestvo", "summa"],
-        how="left",
-        suffixes=("", "_avtoraboty"),
-    )
+    avtoraboty_df = avtoraboty_df[avtoraboty_df["sostojanie"] == "Закрыт"]
+    avtoraboty_df = avtoraboty_df.drop(columns=["identifikatorraboty", "sostojanie"])
+    # Удаление строк, где kod = '00000003' и hozoperatsija = 'Заказ-наряд'
+    prodaja_df = prodaja_df[
+        ~(
+            (prodaja_df["kod"] == "00000003")
+            & (prodaja_df["hozoperatsija"] == "Заказ-наряд")
+        )
+    ]
 
-    # Обновление колонок в prodaja_df
-    prodaja_df["naimenovanie"] = prodaja_df.apply(
-        lambda row: (
-            row["avtorabota"] if pd.notna(row["avtorabota"]) else row["naimenovanie"]
-        ),
-        axis=1,
-    )
-    for col in ["vidremonta", "sostojanie", "ispolnitel"]:
-        if f"{col}_avtoraboty" in prodaja_df.columns:  # Проверка на наличие суффикса
-            prodaja_df[col] = prodaja_df[col].combine_first(prodaja_df[f"{col}_avtoraboty"])
-
-    # Удаление временных колонок
-    prodaja_df.drop(
-        columns=[
-            f"{col}_avtoraboty"
-            for col in ["avtorabota", "vidremonta", "sostojanie", "ispolnitel"]
-            if f"{col}_avtoraboty" in prodaja_df.columns
-        ],
+    # Подготовка данных для переноса
+    avtoraboty_df["kod"] = "00000003"
+    avtoraboty_df["hozoperatsija"] = "Заказ-наряд"
+    avtoraboty_df["vidnomenklatury"] = "Услуга"
+    avtoraboty_df["skladkompanii"] = "Основной цех"
+    avtoraboty_df.rename(
+        columns={
+            "data": "period",
+            "avtorabota": "naimenovanie",
+            "kolichestvo": "kolichestvo",
+            "kontragent": "pokupatel",
+            "ssylka": "dokumentprodazhi",
+        },
         inplace=True,
     )
 
-    prodaja_df.drop(
-        columns=[
-            "avtorabota",
-            "sostojanie",
-            "kontragent",
-            "vidremonta",
-            "identifikatorraboty",
-            "ssylka",
-        ],
-        inplace=True,
-    )
+    # Добавление новых колонок, которые отсутствуют в prodaja_df
+    new_columns = ["vidremonta", "marka", "model", "vin", "ispolnitel"]
+    for col in new_columns:
+        if col not in prodaja_df.columns:
+            prodaja_df[col] = None
 
-    zakazy_query = "SELECT ssylka, avtor AS avtorzakaz, hozoperatsija AS hozzakaz FROM zakazypokupatelej"
+    # Объединение данных Перенесли все работы включая гарантийные и обслуживание собственных транспортных средств, далее перенесем товары из гарантийных
+    prodaja_df = pd.concat([prodaja_df, avtoraboty_df], ignore_index=True)
+
+    zakaz_narad_tovary_query = """
+    SELECT 
+        kod, 
+        data AS period, 
+        nomenklatura AS naimenovanie, 
+        tsena, 
+        kolichestvo,  
+        kontragent AS pokupatel, 
+        vidremonta, 
+        hozoperatsija, 
+        ssylka AS dokumentprodazhi
+    FROM 
+        tovary_zakaznarjad 
+    WHERE 
+        sostojanie = 'Закрыт' 
+        AND vidremonta IN ('Обслуживание собственных автомобилей', 'Гарантийный ремонт', 'Бесплатная работа (Акция)')
+    """
+    zakaz_narad_tovar_df = load_and_normalize_table(zakaz_narad_tovary_query)
+    zakaz_narad_tovar_df = clean_and_convert_to_float(zakaz_narad_tovar_df, "tsena")
+    zakaz_narad_tovar_df = convert_period_to_date(zakaz_narad_tovar_df, "period")
+    zakaz_narad_tovar_df["kolichestvo"] = zakaz_narad_tovar_df["kolichestvo"].astype(
+        float
+    )
+    zakaz_narad_tovar_df["summa"] = (
+        zakaz_narad_tovar_df["kolichestvo"] * zakaz_narad_tovar_df["tsena"]
+    )
+    zakaz_narad_tovar_df.drop(columns="tsena", inplace=True)
+    zakaz_narad_tovar_df["vidnomenklatury"] = "Товар"
+    zakaz_narad_tovar_df["skladkompanii"] = "Основной цех"
+
+    prodaja_df = pd.concat([prodaja_df, zakaz_narad_tovar_df], ignore_index=True)
+    prodaja_df = prodaja_df.sort_values(by="period").reset_index(
+        drop=True
+    )  # Сортируем по дате и сбрасываем индексы
+
+    zakazy_query = "SELECT ssylka AS dokumentosnovanie, avtor AS avtorzakaz, hozoperatsija AS hozzakaz FROM zakazypokupatelej"
     zakazy_df = load_and_normalize_table(zakazy_query)
+    # Удаление дубликатов
+    zakazy_df = zakazy_df.drop_duplicates()
 
     prodaja_df = prodaja_df.merge(
-        zakazy_df, left_on="dokumentosnovanie", right_on="ssylka", how="left"
+        zakazy_df, left_on="dokumentosnovanie", right_on="dokumentosnovanie", how="left"
     )
-
-    prodaja_df.drop(
-        columns=[
-            "ssylka",
-        ],
-        inplace=True,
-    )
-    prodaja_df = prodaja_df.drop_duplicates()
-    postuplenija_df = postuplenija_df.drop_duplicates()
-    filtered_df = filtered_df.drop_duplicates()
 
     # Условие 1: Если hozoperatsija = "Реализация товаров" и rs_zakaznarjad не пустое
     prodaja_df.loc[
@@ -290,6 +343,57 @@ def load_foranalitics_data(engine):
 
     # Удаляем временную колонку
     prodaja_df.drop(columns=["mapped_ispolnitel"], inplace=True)
+
+    # Новый порядок колонок
+    new_column_order = [
+        "kod",
+        "period",
+        "kolichestvo",
+        "summa",
+        "hozoperatsija",
+        "pokupatel",
+        "dokumentprodazhi",
+        "skladkompanii",
+        "dokumentosnovanie",
+        "avtor",
+        "rs_zakaznarjad",
+        "naimenovanie",
+        "proizvoditel",
+        "vidnomenklatury",
+        "type_detail",
+        "gruppa_analogov",
+        "marka",
+        "model",
+        "vin",
+        "ispolnitel",
+        "avtorzakaz",
+        "hozzakaz",
+        "vidremonta",
+    ]
+
+    # Перестановка колонок
+    prodaja_df = prodaja_df[new_column_order]
+
+    # Создаем словарь для быстрого доступа к vidremonta на основе dokumentprodazhi
+    vidremonta_mapping = (
+        prodaja_df.dropna(subset=["vidremonta"])
+        .set_index("dokumentprodazhi")["vidremonta"]
+        .to_dict()
+    )
+
+    # Обновляем vidremonta для строк, где rs_zakaznarjad не пустой, а vidremonta пустой
+    prodaja_df["vidremonta"] = prodaja_df.apply(
+        lambda row: (
+            vidremonta_mapping.get(row["rs_zakaznarjad"], row["vidremonta"])
+            if pd.notna(row["rs_zakaznarjad"]) and pd.isna(row["vidremonta"])
+            else row["vidremonta"]
+        ),
+        axis=1,
+    )
+    # Сортировка по 'period' и 'dokumentprodazhi'
+    prodaja_df = prodaja_df.sort_values(by=["period", "dokumentprodazhi"]).reset_index(
+        drop=True
+    )
 
     # Возвращаем все датафреймы
     return (filtered_df, postuplenija_df, prodaja_df, korrektirovki_df)
