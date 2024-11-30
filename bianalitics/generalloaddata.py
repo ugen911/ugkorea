@@ -241,12 +241,12 @@ def load_foranalitics_data(engine):
     avtoraboty_df = avtoraboty_df[avtoraboty_df["sostojanie"] == "Закрыт"]
     avtoraboty_df = avtoraboty_df.drop(columns=["identifikatorraboty", "sostojanie"])
     # Удаление строк, где kod = '00000003' и hozoperatsija = 'Заказ-наряд'
-    prodaja_df = prodaja_df[
-        ~(
-            (prodaja_df["kod"] == "00000003")
-            & (prodaja_df["hozoperatsija"] == "Заказ-наряд")
-        )
-    ]
+    # prodaja_df = prodaja_df[
+    #     ~(
+    #         (prodaja_df["kod"] == "00000003")
+    #         & (prodaja_df["hozoperatsija"] == "Заказ-наряд")
+    #     )
+    # ]
 
     # Подготовка данных для переноса
     avtoraboty_df["kod"] = "00000003"
@@ -264,14 +264,32 @@ def load_foranalitics_data(engine):
         inplace=True,
     )
 
-    # Добавление новых колонок, которые отсутствуют в prodaja_df
-    new_columns = ["vidremonta", "marka", "model", "vin", "ispolnitel"]
-    for col in new_columns:
-        if col not in prodaja_df.columns:
-            prodaja_df[col] = None
+    # Удаление дубликатов
+    avtoraboty_df_forprodaji = avtoraboty_df[
+        ["dokumentprodazhi", "marka", "model", "vin", "vidremonta", "ispolnitel"]
+    ].drop_duplicates()
+
+    # Убедимся, что 'ispolnitel' не содержит NaN
+    avtoraboty_df_forprodaji["ispolnitel"] = avtoraboty_df_forprodaji["ispolnitel"].fillna("")
+
+    # Агрегация исполнителей для каждой работы
+    avtoraboty_df_forprodaji = (
+        avtoraboty_df_forprodaji.groupby(["dokumentprodazhi", "marka", "model", "vin", "vidremonta"])[
+            "ispolnitel"
+        ]
+        .apply(lambda x: ", ".join(sorted(filter(None, x))))  # Сортируем и объединяем не пустые значения
+        .reset_index()
+    )
+
+
+    prodaja_df = prodaja_df.merge(
+        avtoraboty_df_forprodaji,
+        on="dokumentprodazhi",
+        how="left"
+    )
 
     # Объединение данных Перенесли все работы включая гарантийные и обслуживание собственных транспортных средств, далее перенесем товары из гарантийных
-    prodaja_df = pd.concat([prodaja_df, avtoraboty_df], ignore_index=True)
+    # prodaja_df = pd.concat([prodaja_df, avtoraboty_df], ignore_index=True)
 
     zakaz_narad_tovary_query = """
     SELECT 
@@ -288,7 +306,6 @@ def load_foranalitics_data(engine):
         tovary_zakaznarjad 
     WHERE 
         sostojanie = 'Закрыт' 
-        AND vidremonta IN ('Обслуживание собственных автомобилей', 'Гарантийный ремонт', 'Бесплатная работа (Акция)')
     """
     zakaz_narad_tovar_df = load_and_normalize_table(zakaz_narad_tovary_query)
     zakaz_narad_tovar_df = clean_and_convert_to_float(zakaz_narad_tovar_df, "tsena")
@@ -303,7 +320,7 @@ def load_foranalitics_data(engine):
     zakaz_narad_tovar_df["vidnomenklatury"] = "Товар"
     zakaz_narad_tovar_df["skladkompanii"] = "Основной цех"
 
-    prodaja_df = pd.concat([prodaja_df, zakaz_narad_tovar_df], ignore_index=True)
+    # prodaja_df = pd.concat([prodaja_df, zakaz_narad_tovar_df], ignore_index=True)
     prodaja_df = prodaja_df.sort_values(by="period").reset_index(
         drop=True
     )  # Сортируем по дате и сбрасываем индексы
