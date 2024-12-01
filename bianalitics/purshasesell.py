@@ -8,8 +8,8 @@ import pandas as pd
 engine = get_db_engine()
 
 # Загрузка данных
-nomenklatura, postuplenija_df, prodaja, korrektirovki_df = load_foranalitics_data(
-    engine=engine
+nomenklatura, postuplenija_df, prodaja, korrektirovki_df, zakaz_naryad = (
+    load_foranalitics_data(engine=engine)
 )
 
 # Обработка поступлений
@@ -27,4 +27,8 @@ prodaja.to_excel(
 
 saildoc.to_excel(
     r"C:\Users\evgen\YandexDisk\ЮК\saildoc.xlsx", index=False, header=False
+)
+
+zakaz_naryad.to_excel(
+    r"C:\Users\evgen\YandexDisk\ЮК\zakaz_naryad.xlsx", index=False, header=False
 )

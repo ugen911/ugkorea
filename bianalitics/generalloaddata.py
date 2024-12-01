@@ -212,7 +212,7 @@ def load_foranalitics_data(engine):
     )
 
     # Загрузка таблицы avtoraboty_zakaznarjad
-    avtoraboty_query = "SELECT data, avtorabota, tsena, kolichestvo, sostojanie, kontragent, vidremonta, identifikatorraboty, marka, model, vin, ssylka, avtor FROM avtoraboty_zakaznarjad"
+    avtoraboty_query = "SELECT  kod::TEXT AS kod, data, avtorabota, tsena, kolichestvo, sostojanie, kontragent, vidremonta, identifikatorraboty, marka, model, vin, ssylka, avtor FROM avtoraboty_zakaznarjad"
     avtoraboty_df = load_and_normalize_table(avtoraboty_query)
     avtoraboty_df = clean_and_convert_to_float(avtoraboty_df, "tsena")
     avtoraboty_df = convert_period_to_date(avtoraboty_df, "data")
@@ -249,7 +249,6 @@ def load_foranalitics_data(engine):
     # ]
 
     # Подготовка данных для переноса
-    avtoraboty_df["kod"] = "00000003"
     avtoraboty_df["hozoperatsija"] = "Заказ-наряд"
     avtoraboty_df["vidnomenklatury"] = "Услуга"
     avtoraboty_df["skladkompanii"] = "Основной цех"
@@ -280,7 +279,6 @@ def load_foranalitics_data(engine):
         .apply(lambda x: ", ".join(sorted(filter(None, x))))  # Сортируем и объединяем не пустые значения
         .reset_index()
     )
-
 
     prodaja_df = prodaja_df.merge(
         avtoraboty_df_forprodaji,
@@ -320,6 +318,7 @@ def load_foranalitics_data(engine):
     zakaz_narad_tovar_df["vidnomenklatury"] = "Товар"
     zakaz_narad_tovar_df["skladkompanii"] = "Основной цех"
 
+    zakaz_naryad = pd.concat([avtoraboty_df, zakaz_narad_tovar_df], ignore_index=True)
     # prodaja_df = pd.concat([prodaja_df, zakaz_narad_tovar_df], ignore_index=True)
     prodaja_df = prodaja_df.sort_values(by="period").reset_index(
         drop=True
@@ -413,4 +412,4 @@ def load_foranalitics_data(engine):
     )
 
     # Возвращаем все датафреймы
-    return (filtered_df, postuplenija_df, prodaja_df, korrektirovki_df)
+    return (filtered_df, postuplenija_df, prodaja_df, korrektirovki_df, zakaz_naryad)
