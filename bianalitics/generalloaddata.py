@@ -411,5 +411,37 @@ def load_foranalitics_data(engine):
         drop=True
     )
 
+    # Шаг 1: Найти все строки, где hozzakaz = 'Заказ покупателя', и создать датафрейм с 'dokumentprodazhi' и 'kod'
+    hozzakaz_df = prodaja_df[prodaja_df["hozzakaz"] == "Заказ покупателя"][
+        ["dokumentprodazhi", "kod"]
+    ].drop_duplicates()
+
+    # Шаг 2: Сформировать SQL-запрос для получения данных из таблицы prodazhi с учетом TRIM
+    dokumentprodazhi_kod_list = tuple(hozzakaz_df.itertuples(index=False, name=None))
+    if dokumentprodazhi_kod_list:
+        indzakaz_query = f"""
+        SELECT 
+            TRIM(dokumentprodazhi) AS dokumentprodazhi,
+            TRIM(kod) AS kod,
+            sebestoimost
+        FROM prodazhi
+        WHERE (TRIM(dokumentprodazhi), TRIM(kod)) IN {dokumentprodazhi_kod_list}
+        """
+
+        # Шаг 3: Загрузить данные из базы данных
+        indzakaz_df = pd.read_sql(indzakaz_query, engine)
+
+        indzakaz_df = clean_and_convert_to_float(indzakaz_df, "sebestoimost")
+
+        # Шаг 4: Оставить только строки с максимальной себестоимостью для каждой пары (dokumentprodazhi, kod)
+        indzakaz_df = indzakaz_df.groupby(
+            ["dokumentprodazhi", "kod"], as_index=False
+        ).agg({"sebestoimost": "max"})
+
+        # Шаг 5: Левое соединение prodaja_df с получившимися данными
+        prodaja_df = prodaja_df.merge(
+            indzakaz_df, on=["dokumentprodazhi", "kod"], how="left"
+        )
+
     # Возвращаем все датафреймы
     return (filtered_df, postuplenija_df, prodaja_df, korrektirovki_df, zakaz_naryad)
