@@ -423,6 +423,7 @@ def load_foranalitics_data(engine):
         SELECT 
             TRIM(dokumentprodazhi) AS dokumentprodazhi,
             TRIM(kod) AS kod,
+            kolichestvo,
             sebestoimost
         FROM prodazhi
         WHERE (TRIM(dokumentprodazhi), TRIM(kod)) IN {dokumentprodazhi_kod_list}
@@ -432,6 +433,13 @@ def load_foranalitics_data(engine):
         indzakaz_df = pd.read_sql(indzakaz_query, engine)
 
         indzakaz_df = clean_and_convert_to_float(indzakaz_df, "sebestoimost")
+        indzakaz_df = clean_and_convert_to_float(indzakaz_df, "kolichestvo")
+
+        indzakaz_df["sebestoimost"] = (
+            indzakaz_df["sebestoimost"] / indzakaz_df["kolichestvo"]
+        )
+
+        indzakaz_df.drop(columns=["kolichestvo"], inplace=True)
 
         # Шаг 4: Оставить только строки с максимальной себестоимостью для каждой пары (dokumentprodazhi, kod)
         indzakaz_df = indzakaz_df.groupby(
