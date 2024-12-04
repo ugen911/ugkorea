@@ -121,11 +121,13 @@ def update_call_log_table(engine, df, call_log_data):
     schema = "public"
     table_name = "call_log"
 
+    if df is None or df.empty:
+        print("Нет данных для обновления: файл отсутствует или пустой.")
+        return
+
     # Удаление данных старше 5 лет
     five_years_ago = datetime.now() - timedelta(days=5 * 365)
-    cutoff_date = pd.to_datetime(
-        five_years_ago.date()
-    )  # Приводим к типу datetime64[ns]
+    cutoff_date = pd.to_datetime(five_years_ago.date())
 
     print(f"Удаление данных старше: {cutoff_date}")
     call_log_data = call_log_data[
@@ -141,18 +143,23 @@ def update_call_log_table(engine, df, call_log_data):
     common_dates = set(df_dates).intersection(set(call_log_dates))
     new_dates = set(df_dates) - set(call_log_dates)
 
-
     # Обновить данные за совпадающие даты
     if common_dates:
         call_log_data = call_log_data[~call_log_data["Дата вызова"].isin(common_dates)]
         updated_data = df[df["Дата вызова"].isin(common_dates)]
         if not updated_data.empty:
+            # Удаляем полностью пустые или NaN колонки
+            call_log_data = call_log_data.dropna(axis=1, how="all")
+            updated_data = updated_data.dropna(axis=1, how="all")
             call_log_data = pd.concat([call_log_data, updated_data], ignore_index=True)
 
     # Добавить данные за новые даты
     if new_dates:
         new_data = df[df["Дата вызова"].isin(new_dates)]
         if not new_data.empty:
+            # Удаляем полностью пустые или NaN колонки
+            call_log_data = call_log_data.dropna(axis=1, how="all")
+            new_data = new_data.dropna(axis=1, how="all")
             call_log_data = pd.concat([call_log_data, new_data], ignore_index=True)
 
     # Убедиться, что "Длительность" в формате timedelta
