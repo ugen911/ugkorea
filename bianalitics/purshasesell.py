@@ -36,3 +36,8 @@ zakaz_naryad.to_excel(
 nomenklatura.to_excel(
     r"C:\Users\evgen\YandexDisk\ЮК\nomenklatura.xlsx", index=False, header=False
 )
+
+
+nomenklatura.to_excel(
+    r"C:\Users\evgen\YandexDisk\ЮК\nomenklatura.xlsx", index=False, header=False
+)
