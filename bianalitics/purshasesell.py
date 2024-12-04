@@ -2,7 +2,7 @@ from ugkorea.db.database import get_db_engine
 from ugkorea.bianalitics.generalloaddata import load_foranalitics_data
 from ugkorea.bianalitics.korrectirovki import process_corrections_and_supplies
 from ugkorea.bianalitics.getgroupdoc import get_saildocument
-from ugkorea.bianalitics.call_log import update_call_journal
+from ugkorea.bianalitics.call_log import update_call_journal, fetch_and_filter_call_log
 import pandas as pd
 
 # Подключение к базе данных
@@ -18,6 +18,7 @@ postuplenija = process_corrections_and_supplies(korrektirovki_df, postuplenija_d
 saildoc = get_saildocument(prodaja)
 
 update_call_journal(engine=engine)
+call_log = fetch_and_filter_call_log(engine)
 
 # Сохранение файлов в указанный путь без первой строки (имён колонок)
 postuplenija.to_excel(
@@ -38,4 +39,8 @@ zakaz_naryad.to_excel(
 
 nomenklatura.to_excel(
     r"C:\Users\evgen\YandexDisk\ЮК\nomenklatura.xlsx", index=False, header=False
+)
+
+call_log.to_excel(
+    r"C:\Users\evgen\YandexDisk\ЮК\zvonki.xlsx", index=False, header=False
 )

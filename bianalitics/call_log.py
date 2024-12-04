@@ -204,3 +204,78 @@ def update_call_journal(engine):
         print("Нет данных для обновления.")
 
 
+def fetch_and_filter_call_log(engine):
+    """
+    Извлекает данные из таблицы call_log, объединяет дату и время вызова в одну колонку,
+    фильтрует звонки по графику работы (будни и выходные), сортирует по дате и времени вызова.
+    """
+    # Подключение к базе данных
+    schema = "public"
+    table_name = "call_log"
+
+    try:
+        # Извлечение данных из таблицы call_log
+        with engine.connect() as connection:
+            query = f"SELECT * FROM {schema}.{table_name};"
+            call_log_data = pd.read_sql(query, connection)
+
+        # Объединение колонок "Дата вызова" и "Время вызова"
+        call_log_data["Дата и время вызова"] = pd.to_datetime(
+            call_log_data["Дата вызова"].astype(str)
+            + " "
+            + call_log_data["Время вызова"].astype(str),
+            errors="coerce",
+        )
+
+        # Определение дня недели (0 - Понедельник, 6 - Воскресенье)
+        call_log_data["День недели"] = call_log_data["Дата и время вызова"].dt.dayofweek
+
+        # Фильтрация по графику
+        def is_within_schedule(row):
+            time = row["Дата и время вызова"].time()
+            day = row["День недели"]
+            if day in range(0, 5):  # Будние дни
+                return (
+                    time >= pd.Timestamp("08:00").time()
+                    and time <= pd.Timestamp("19:00").time()
+                )
+            elif day in range(5, 7):  # Выходные
+                return (
+                    time >= pd.Timestamp("09:00").time()
+                    and time <= pd.Timestamp("18:00").time()
+                )
+            return False
+
+        # Применение фильтрации
+        call_log_data = call_log_data[call_log_data.apply(is_within_schedule, axis=1)]
+
+        # Сортировка по "Дата и время вызова"
+        call_log_data = call_log_data.sort_values(by="Дата и время вызова").reset_index(
+            drop=True
+        )
+
+        # Перемещение колонки "Дата и время вызова" в конец
+        columns = [
+            col for col in call_log_data.columns if col != "Дата и время вызова"
+        ] + ["Дата и время вызова"]
+        call_log_data = call_log_data[columns]
+
+        call_log_data = call_log_data.drop(
+            columns=["Дата вызова", "Время вызова", "День недели"]
+        )
+
+        # Объединение колонок "Тип" и "Статус" в новую колонку "Статус"
+        call_log_data["Статус"] = call_log_data["Тип"].fillna("") + " " + call_log_data["Статус"].fillna("")
+
+        # Формирование итогового DataFrame с нужными колонками в заданном порядке
+        call_log_data = call_log_data[["Дата и время вызова", "Первый ответивший", "Статус", "Длительность", "Входящая линия"]]
+        # Преобразование длительности из формата hh:mm:ss в количество секунд
+        call_log_data["Длительность"] = pd.to_timedelta(call_log_data["Длительность"]).dt.total_seconds().astype(int)
+
+
+
+        return call_log_data
+
+    except Exception as e:
+        print(f"Ошибка при обработке данных из таблицы {table_name}: {e}")
+        return None
