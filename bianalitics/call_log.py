@@ -2,7 +2,9 @@ import pandas as pd
 from sqlalchemy import inspect, text
 import os
 import re
+from datetime import datetime, timedelta
 from ugkorea.db.database import get_db_engine
+
 
 # Получаем движок базы данных
 engine = get_db_engine()
@@ -114,9 +116,22 @@ def update_call_log_table(engine, df, call_log_data):
     Обновляет данные в таблице call_log:
     - Заменяет данные за совпадающие даты.
     - Добавляет данные за новые даты.
+    - Удаляет данные старше 5 лет перед загрузкой.
     """
     schema = "public"
     table_name = "call_log"
+
+    # Удаление данных старше 5 лет
+    five_years_ago = datetime.now() - timedelta(days=5 * 365)
+    cutoff_date = pd.to_datetime(
+        five_years_ago.date()
+    )  # Приводим к типу datetime64[ns]
+
+    print(f"Удаление данных старше: {cutoff_date}")
+    call_log_data = call_log_data[
+        pd.to_datetime(call_log_data["Дата вызова"]) >= cutoff_date
+    ]
+    df = df[pd.to_datetime(df["Дата вызова"]) >= cutoff_date]
 
     # Получаем уникальные даты из обоих датафреймов
     df_dates = df["Дата вызова"].unique()
@@ -126,24 +141,43 @@ def update_call_log_table(engine, df, call_log_data):
     common_dates = set(df_dates).intersection(set(call_log_dates))
     new_dates = set(df_dates) - set(call_log_dates)
 
-    print(f"Новые даты для добавления: {new_dates}")
 
     # Обновить данные за совпадающие даты
     if common_dates:
         call_log_data = call_log_data[~call_log_data["Дата вызова"].isin(common_dates)]
         updated_data = df[df["Дата вызова"].isin(common_dates)]
-        call_log_data = pd.concat([call_log_data, updated_data], ignore_index=True)
+        if not updated_data.empty:
+            call_log_data = pd.concat([call_log_data, updated_data], ignore_index=True)
 
     # Добавить данные за новые даты
     if new_dates:
         new_data = df[df["Дата вызова"].isin(new_dates)]
-        call_log_data = pd.concat([call_log_data, new_data], ignore_index=True)
+        if not new_data.empty:
+            call_log_data = pd.concat([call_log_data, new_data], ignore_index=True)
 
-    # Убедиться, что колонки в корректном формате
+    # Убедиться, что "Длительность" в формате timedelta
+    if not pd.api.types.is_timedelta64_dtype(call_log_data["Длительность"]):
+        call_log_data["Длительность"] = pd.to_timedelta(
+            call_log_data["Длительность"], errors="coerce"
+        )
+
+    # Конвертировать "Длительность" в строку "hh:mm:ss" для загрузки в базу данных
+    call_log_data["Длительность"] = (
+        call_log_data["Длительность"]
+        .dt.total_seconds()
+        .apply(
+            lambda x: (
+                f"{int(x // 3600):02}:{int((x % 3600) // 60):02}:{int(x % 60):02}"
+                if not pd.isna(x)
+                else None
+            )
+        )
+    )
+
+    # Убедиться, что типы данных корректны
     call_log_data["Время вызова"] = pd.to_datetime(
-        call_log_data["Время вызова"], format="%H:%M:%S"
+        call_log_data["Время вызова"], format="%H:%M:%S", errors="coerce"
     ).dt.time
-    call_log_data["Длительность"] = pd.to_timedelta(call_log_data["Длительность"])
 
     # Загрузка обновленных данных в базу данных
     with engine.connect() as connection:
@@ -157,6 +191,8 @@ def update_call_log_table(engine, df, call_log_data):
     print("Данные успешно обновлены в таблице call_log.")
 
     # Получаем данные из таблицы call_log или создаем таблицу, если её нет
+
+
 call_log_data = get_or_create_call_log_table(engine)
 
 
