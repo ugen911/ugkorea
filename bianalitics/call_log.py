@@ -3,11 +3,6 @@ from sqlalchemy import inspect, text
 import os
 import re
 from datetime import datetime, timedelta
-from ugkorea.db.database import get_db_engine
-
-
-# Получаем движок базы данных
-engine = get_db_engine()
 
 
 def get_or_create_call_log_table(engine):

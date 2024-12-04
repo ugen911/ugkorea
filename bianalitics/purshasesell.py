@@ -2,6 +2,7 @@ from ugkorea.db.database import get_db_engine
 from ugkorea.bianalitics.generalloaddata import load_foranalitics_data
 from ugkorea.bianalitics.korrectirovki import process_corrections_and_supplies
 from ugkorea.bianalitics.getgroupdoc import get_saildocument
+from ugkorea.bianalitics.call_log import update_call_journal
 import pandas as pd
 
 # Подключение к базе данных
@@ -15,6 +16,8 @@ nomenklatura, postuplenija_df, prodaja, korrektirovki_df, zakaz_naryad = (
 # Обработка поступлений
 postuplenija = process_corrections_and_supplies(korrektirovki_df, postuplenija_df)
 saildoc = get_saildocument(prodaja)
+
+update_call_journal(engine=engine)
 
 # Сохранение файлов в указанный путь без первой строки (имён колонок)
 postuplenija.to_excel(
