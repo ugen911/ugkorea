@@ -200,14 +200,12 @@ def update_call_log_table(engine, df, call_log_data):
     # Получаем данные из таблицы call_log или создаем таблицу, если её нет
 
 
-call_log_data = get_or_create_call_log_table(engine)
+def update_call_journal(engine):
+    call_log_data = get_or_create_call_log_table(engine)
+    df = find_and_load_latest_call_report()
+    if df is not None:
+        update_call_log_table(engine, df, call_log_data)
+    else:
+        print("Нет данных для обновления.")
 
 
-# Вызов функции для поиска и загрузки данных
-df = find_and_load_latest_call_report()
-
-if df is not None:
-    # Обновляем таблицу call_log
-    update_call_log_table(engine, df, call_log_data)
-else:
-    print("Нет данных для обновления.")
