@@ -32,3 +32,7 @@ saildoc.to_excel(
 zakaz_naryad.to_excel(
     r"C:\Users\evgen\YandexDisk\ЮК\zakaz_naryad.xlsx", index=False, header=False
 )
+
+nomenklatura.to_excel(
+    r"C:\Users\evgen\YandexDisk\ЮК\nomenklatura.xlsx", index=False, header=False
+)
