@@ -131,6 +131,11 @@ def load_foranalitics_data(engine):
         )
         return df
 
+    vyrabotka_query = "SELECT datazakrytija AS data, slesar, avtorabota, vidremonta, dokumentprodazhi, kolichestvo, summa FROM vyrabotkaslesarej"
+    vyrabotka_df = load_and_normalize_table(vyrabotka_query)
+    vyrabotka_df = clean_and_convert_to_float(vyrabotka_df, "kolichestvo")
+    vyrabotka_df = clean_and_convert_to_float(vyrabotka_df, "summa")
+
     postuplenija_query = """
     SELECT ssylka, kod, data, tsena, kolichestvo, hozoperatsija, kontragent
     FROM postuplenija
@@ -452,4 +457,6 @@ def load_foranalitics_data(engine):
         )
 
     # Возвращаем все датафреймы
-    return (filtered_df, postuplenija_df, prodaja_df, korrektirovki_df, zakaz_naryad)
+    return (
+        vyrabotka_df, filtered_df, postuplenija_df, prodaja_df, korrektirovki_df, zakaz_naryad
+    )
