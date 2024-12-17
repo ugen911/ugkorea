@@ -135,6 +135,7 @@ def load_foranalitics_data(engine):
     vyrabotka_df = load_and_normalize_table(vyrabotka_query)
     vyrabotka_df = clean_and_convert_to_float(vyrabotka_df, "kolichestvo")
     vyrabotka_df = clean_and_convert_to_float(vyrabotka_df, "summa")
+    vyrabotka_df["slesar"] = vyrabotka_df["slesar"].fillna("Субподряд")
 
     postuplenija_query = """
     SELECT ssylka, kod, data, tsena, kolichestvo, hozoperatsija, kontragent
