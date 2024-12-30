@@ -2,10 +2,6 @@ import pandas as pd
 import numpy as np
 
 
-import pandas as pd
-import numpy as np
-
-
 def correct_new_price_filters(df):
     """
     Корректирует значения в колонке `new_price` в датафрейме на основании условий для товаров с фильтрами.
