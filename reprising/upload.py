@@ -15,6 +15,8 @@ def regtament_view(filtered_df):
     Returns:
     pd.DataFrame: Обработанный датафрейм с дополнительными колонками.
     """
+
+    filtered_df = filtered_df[filtered_df["new_price"] != 0]
     # Задаем последовательность колонок
     columns_order = [
         "kod",
@@ -85,8 +87,7 @@ def regtament_view(filtered_df):
         by=["naimenovanie", "gruppa_analogov", "proizvoditel"]
     )
 
-    # Фильтруем только те строки, где price_diff не равен 0
-    filtered_df = filtered_df[filtered_df["price_diff"] != 0]
+    
 
     # Вычисляем сумму по колонке price_diff_mult_ostatok
     total_sum = filtered_df["price_diff_mult_ostatok"].sum()
@@ -134,8 +135,8 @@ def regtament_view(filtered_df):
     return filtered_df
 
 
-
 def export_data(df):
+
     # Путь к основному и резервному местам для выгрузки
     primary_path = r"\\26.218.196.12\заказы\Евгений\Переоценка"
     secondary_path = r"D:\NAS\заказы\Евгений\Переоценка"
@@ -153,7 +154,8 @@ def export_data(df):
     full_export_path = os.path.join(export_path, "ПолныеДанные.xlsx")
     df.to_excel(full_export_path, index=False, freeze_panes=(1, 0))
     print(f"Полные данные выгружены в {full_export_path}")
-
+    # Фильтруем только те строки, где price_diff не равен 0
+    df = df[df["Разница в цене"] != 0]
     # Создание датафрейма с колонками Код и Новая цена, исключая последнюю строку
     reduced_df = df[["Код", "Новая цена"]].iloc[:-1]
 
