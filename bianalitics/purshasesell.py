@@ -3,6 +3,7 @@ from ugkorea.bianalitics.generalloaddata import load_foranalitics_data
 from ugkorea.bianalitics.korrectirovki import process_corrections_and_supplies
 from ugkorea.bianalitics.getgroupdoc import get_saildocument
 from ugkorea.bianalitics.call_log import update_call_journal, fetch_and_filter_call_log
+from ugkorea.reglament_task.bibinetprice import export_price_to_yandexdisk_if_exists
 import pandas as pd
 
 # Подключение к базе данных
@@ -52,3 +53,5 @@ call_log.to_excel(
 
 vyrabotka_df.to_excel(r"C:\Users\evgen\YandexDisk\ЮК\vyrabotka.xlsx", index=False, header=False
 )
+
+export_price_to_yandexdisk_if_exists()
