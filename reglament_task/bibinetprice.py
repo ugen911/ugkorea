@@ -113,6 +113,11 @@ def export_price_to_yandexdisk_if_exists():
     # Оставляем только нужные колонки
     df_final = df_final[cols_to_keep]
 
+    # Если в колонке "Фотографии" последний символ - запятая, удаляем его
+    # Сначала заполним NaN пустыми строками, чтобы избежать ошибок при обработке .str
+    df_final["Фотографии"] = df_final["Фотографии"].fillna("")
+    df_final["Фотографии"] = df_final["Фотографии"].str.rstrip(",")
+
     # Путь к итоговому файлу
     csv_path = os.path.join(yandex_dir, "bibinet.csv")
 
