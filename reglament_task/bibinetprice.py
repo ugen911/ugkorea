@@ -85,11 +85,6 @@ def export_price_to_yandexdisk_if_exists():
         inplace=True,
     )
 
-    # Удаляем строки, в которых в "Наименование товара *" есть б/у (в любом регистре)
-    mask_bu = (
-        df_final["Наименование товара *"].str.lower().str.contains("б/у", na=False)
-    )
-    df_final = df_final[~mask_bu]
 
     # Формируем список нужных колонок в правильном порядке
     cols_to_keep = [
@@ -113,16 +108,26 @@ def export_price_to_yandexdisk_if_exists():
     # Оставляем только нужные колонки
     df_final = df_final[cols_to_keep]
 
-    # Если в колонке "Фотографии" последний символ - запятая, удаляем его
-    # Сначала заполним NaN пустыми строками, чтобы избежать ошибок при обработке .str
-    df_final["Фотографии"] = df_final["Фотографии"].fillna("")
-    df_final["Фотографии"] = df_final["Фотографии"].str.rstrip(",")
+    # Разделяем на 2 набора:
+    # 1) Без "б/у" (bibinet.csv)
+    # 2) Только "б/у" (bibinetrepair.csv)
 
-    # Путь к итоговому файлу
-    csv_path = os.path.join(yandex_dir, "bibinet.csv")
+    # Создаём маску, где в "Наименование товара *" есть "б/у" (в любом регистре)
+    mask_bu = (
+        df_final["Наименование товара *"].str.lower().str.contains("б/у", na=False)
+    )
+
+    df_non_bu = df_final[~mask_bu]  # товары, не содержащие "б/у"
+    df_bu = df_final[mask_bu]  # товары, содержащие "б/у"
 
     # Сохраняем результат в CSV (кодировка Windows-1251, разделитель ";")
-    df_final.to_csv(csv_path, index=False, sep=";", encoding="windows-1251")
+    # 1) bibinet.csv – без б/у
+    csv_path_main = os.path.join(yandex_dir, "bibinet.csv")
+    df_non_bu.to_csv(csv_path_main, index=False, sep=";", encoding="windows-1251")
+
+    # 2) bibinetrepair.csv – только б/у
+    csv_path_repair = os.path.join(yandex_dir, "bibinetrepair.csv")
+    df_bu.to_csv(csv_path_repair, index=False, sep=";", encoding="windows-1251")
 
 
 # Вызов функции при запуске скрипта
