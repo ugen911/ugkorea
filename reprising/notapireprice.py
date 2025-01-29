@@ -71,17 +71,12 @@ def not_api_calculate_new_prices(
             delprice >= 10000,
         ],
         [
-            # np.ceil(delprice * 2 / 10) * 10,
-            np.ceil(delprice * 2.25 / 10) * 10,
-            # np.ceil(delprice * 1.7 / 10) * 10,
-            np.ceil(delprice * 1.95 / 10) * 10,
-            # np.ceil(delprice * 1.6 / 10) * 10,
-            # np.ceil(delprice * 1.6 / 10) * 10,
-            np.ceil(delprice * 1.85 / 10) * 10,
-            # np.ceil(delprice * 1.25 / 10) * 10,
-            np.ceil(delprice * 1.50 / 10) * 10,
-            #np.ceil(delprice * 1.3 / 10) * 10,
-            np.ceil(delprice * 1.55 / 10) * 10,
+            np.ceil(delprice * 2 / 10) * 10,
+            np.ceil(delprice * 1.7 / 10) * 10,
+            np.ceil(delprice * 1.6 / 10) * 10,
+            np.ceil(delprice * 1.25 / 10) * 10,
+            np.ceil(delprice * 1.3 / 10) * 10,
+            
         ],
         default=filtered_df.loc[
             condition, "new_price"

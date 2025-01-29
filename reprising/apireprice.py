@@ -88,12 +88,12 @@ def calculate_new_prices_for_api(
     new_price = np.select(
         [delprice <= 200, delprice <= 300, delprice >= 10000],
         [
-            # np.ceil(delprice * 1.8 / 10) * 10,
-            np.ceil(delprice * 2.05 / 10) * 10,
-            # np.ceil(delprice * 1.65 / 10) * 10,
-            np.ceil(delprice * 1.9 / 10) * 10,
-            #np.ceil(delprice * 1.35 / 10) * 10,
-            np.ceil(delprice * 1.6 / 10) * 10,
+            np.ceil(delprice * 1.8 / 10) * 10,
+            
+            np.ceil(delprice * 1.65 / 10) * 10,
+            
+            np.ceil(delprice * 1.35 / 10) * 10,
+            
         ],
         default=np.nan,  # Все, что не попадает под условия, пока NaN
     )
