@@ -36,7 +36,7 @@ def correct_new_price_filters(df):
 
     # Применение условия для корректировки верхней границы new_price
     df.loc[mask, "new_price"] = np.where(
-        df.loc[mask, "new_price"] > df.loc[mask, "tsenazakup"] * 1.2,
+        df.loc[mask, "new_price"] > df.loc[mask, "tsenazakup"] * 2.2,
         np.ceil(df.loc[mask, "tsenazakup"] * 2.2 / 10)
         * 10,  # Округление до 10 рублей вверх
         df.loc[mask, "new_price"],
@@ -44,7 +44,7 @@ def correct_new_price_filters(df):
 
     # Применение условия для корректировки нижней границы new_price
     middleprice_adjusted = df.loc[mask, "middleprice"] * 1.4
-    maxprice_adjusted = df.loc[mask, "maxprice"] * 1.1
+    maxprice_adjusted = df.loc[mask, "maxprice"] * 1.15
     min_threshold = np.maximum(
         middleprice_adjusted, maxprice_adjusted
     )  # Выбор максимума из двух значений

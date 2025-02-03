@@ -28,16 +28,16 @@ print("Пересчитываем цены для прайсов от поста
 # Пересчитываем цены для прайсов от поставщиков
 filtered = not_api_calculate_new_prices(filtered_df, salespivot, base_percent=1.55, reduced_base_percent=1.40)
 print("Базовая наценка от api")
-# filtered.to_csv("filtered_df.csv")
+#filtered.to_csv("filtered_not_api_df.csv")
 # Базовая наценка от api
 df = calculate_new_prices_for_api(filtered, salespivot, suppliespivot, base_percent=1.55, reduced_base_percent=1.40)
-# df.to_csv("filtered_df.csv")
+#df.to_csv("filtered_df_api.csv")
 
 
 # print("adjust_prices_by_class")
 # Регулируем цену относительно медианной цены классов которые процениваются по поставщикам и api у тех позиций который вообще new_price не рассчитался
 df_new = adjust_prices_by_class(filtered_df=df, salespivot=salespivot, suppliespivot=suppliespivot)
-# df_new.to_csv("filtered_df.csv")
+#df_new.to_csv("filtered_df_by_class.csv")
 
 # Находим позиции от которых нужно избавиться (ДАта создания отсутствует или старше 2 лет, нет поступлений последние 18 месяцев) уже рассматриваем позиции с new_price есть и смотрим чтобы new_price не улетал от Median по классу ориг неориг выше чем на 50% если нет продаж и покупок
 # если есть  продажа в какой-то из месяцев и одна или 2 штуки то не выше чем на 70% если есть продажи стабильно от 2 месяцев то считаем цену от 70% от median_price. с new_price есть,  delprice или median_price есть api в sklad есть
@@ -46,14 +46,14 @@ df_new = adjust_prices_by_class(filtered_df=df, salespivot=salespivot, suppliesp
 print('nonliquid')
 res = adjust_new_price_for_non_liquid(df_new, salespivot)
 df_1 = adjust_prices_without_delprice(res)
-# df_1.to_csv("filtered_df.csv")
+#df_1.to_csv("filtered_non_liquid__without_delprice_df.csv")
 # Проверить если у товаров с A A1 при этом X1 X поднятие цены за последние 3 года коррелирует с падением продаж при этом наценка относительно median_price > 50%
 # то пробуем снижать цену не протеворечит проверки на максимум и среднюю. Можно рассчитать сезонку по медиане и +- от медианы по каждому месяцу общих продаж учесть сезонность и если падение продаж при повышении цены значительно выше сезонки то значит есть зависимость от цены
 
 # ПРоверяем изменение цен по месяцам в priceendmonth и stockendmonth должны быть положительные если все таки new_price до сих под пуст должны обеспечить индексацию товаров на 7% год если товар не дорогостоящий не выше 5000 рублей в розницу если выше пусть считает 3 наценки считает смотря на изменение цен в priceandmonth и нацениеваем на срок
 print("inflation")
 df_2 = indeksation(df_1, priceendmonth)
-#df_2.to_csv("filtered_df.csv")
+#df_2.to_csv("filtered_df_indeksation.csv")
 
 # Преверяем цены у конкурентов, пытаемся подняться или спуститься под них
 
@@ -63,10 +63,10 @@ df_2 = indeksation(df_1, priceendmonth)
 # Так же проверяем чтобы аналог не мог стоить дороже оригинала
 print('rebalace...')
 df_3 = rebalance(df_2, engine=engine)
-# df_3.to_csv("filtered_df.csv")
+#df_3.to_csv("filtered_df_rebalance_analog.csv")
 
 df2 = correct_new_price_filters(df_3)
-
+#df_3.to_csv("filtered_df_correct_new_price_filters.csv")
 print('- brands, texts')
 brand, text = load_brands_and_text()
 k = filter_dataframe(df2, brand, text)
