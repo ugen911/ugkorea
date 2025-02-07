@@ -123,8 +123,8 @@ final_with_sales_df = final_with_sales_df[['kod', 'artikul', 'proizvoditel', 'na
                                            'tsenazakup', 'tsenarozn', 'osnsklad'] + columns_with_dates + ['Total_Sales']]
 
 # Попробуем сначала сохранить файл локально, если не получится, попробуем по сети
-local_path = r"D:\NAS\общая\АРХИВ\Евгений Т"
-network_path = r"\\26.218.196.12\общая\АРХИВ\Евгений Т"
+local_path = r"D:\NAS\общая\АРХИВ\Юлия"
+network_path = r"\\26.218.196.12\общая\АРХИВ\Юлия"
 file_name = "Chinaparts.xlsx"
 
 try:
