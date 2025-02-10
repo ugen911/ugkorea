@@ -20,7 +20,7 @@ def adjust_new_price(df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: Датафрейм с откорректированным столбцом 'new_price'.
     """
     # Вычисляем минимальную допустимую цену для каждой строки
-    min_price = np.maximum(df["middleprice"] * 1.3, df["maxprice"] * 1.1)
+    min_price = np.maximum(df["middleprice"] * 1.3, df["maxprice"] * 1.1, df["tsenazakup"] * 1.35)
     # Округляем полученное значение вверх до ближайших 10 рублей
     min_price = np.ceil(min_price / 10) * 10
 
