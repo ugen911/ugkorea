@@ -26,11 +26,11 @@ filtered_df, priceendmonth, salespivot, stockendmonth, suppliespivot, postupleni
 
 print("Пересчитываем цены для прайсов от поставщиков")
 # Пересчитываем цены для прайсов от поставщиков
-filtered = not_api_calculate_new_prices(filtered_df, salespivot, base_percent=1.55, reduced_base_percent=1.40)
+filtered = not_api_calculate_new_prices(filtered_df, salespivot, base_percent=1.6, reduced_base_percent=1.40)
 print("Базовая наценка от api")
 # filtered.to_csv("filtered_not_api_df.csv")
 # Базовая наценка от api
-df = calculate_new_prices_for_api(filtered, salespivot, suppliespivot, base_percent=1.55, reduced_base_percent=1.40)
+df = calculate_new_prices_for_api(filtered, salespivot, suppliespivot, base_percent=1.6, reduced_base_percent=1.40)
 # df.to_csv("filtered_df_api.csv")
 
 
