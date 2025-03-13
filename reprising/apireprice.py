@@ -83,7 +83,16 @@ def calculate_new_prices_for_api(
     filtered_df.loc[condition_api, "base_percent"] = filtered_df.loc[
         condition_api
     ].apply(get_base_percent, axis=1)
+    # Добавим проверку для строки с kod = 'ЦБ023035'
+    condition_central_bank = filtered_df["kod"] == "ЦБ023035"
 
+    # Выводим расчетный base_percent для строки с kod = 'ЦБ023035'
+    #print(f"Расчетный base_percent для строки с kod = 'ЦБ023035': {filtered_df.loc[condition_central_bank, 'base_percent']}")
+    
+
+    # Выводим расчетный base_percent для строки с kod = 'ЦБ023035'
+    #print(f"Расчетный new_price для строки с kod = 'ЦБ023035': {filtered_df.loc[condition_central_bank, 'new_price']}")
+    
     # Условие по delprice
     new_price = np.select(
         [delprice <= 200, delprice <= 300, delprice >= 10000],
@@ -99,6 +108,8 @@ def calculate_new_prices_for_api(
     recent_mask = (current_date - data).dt.days < 14
     filtered_df.loc[condition_api & recent_mask, "new_price"] = tsenarozn
 
+    
+
     # Для всех остальных строк, используем base_percent
     nan_mask = filtered_df.loc[condition_api, "new_price"].isna()
     filtered_df.loc[condition_api & nan_mask, "new_price"] = (
@@ -110,12 +121,43 @@ def calculate_new_prices_for_api(
         * 10
     )
 
-    # Условие на дату, если прошло менее 60 дней — не выше 2.2 * medianprice
+    # Проверяем маски last_60_days_mask и valid_median_mask
     last_60_days_mask = (current_date - data).dt.days < 60
     valid_median_mask = medianprice.notna()
+
+    # Отладочный вывод для проверки масок
+    #print("Проверка для строки с kod = 'ЦБ023035':")
+    #condition_central_bank = filtered_df["kod"] == "ЦБ023035"
+    #print("Фильтр last_60_days_mask для строки 'ЦБ023035':")
+    #print(last_60_days_mask[condition_central_bank])
+    #print("Фильтр valid_median_mask для строки 'ЦБ023035':")
+    #print(valid_median_mask[condition_central_bank])
+
+    # Выводим промежуточные значения для проверки
+    #print("Значения для строки с kod = 'ЦБ023035' перед обновлением new_price:")
+    #print(filtered_df.loc[condition_central_bank, ["kod", "delprice", "new_price", "median_price"]])
+
+    # Проверяем, если new_price больше чем medianprice * 2.2, округленное вверх до 10, обновляем
     filtered_df.loc[
         condition_api & last_60_days_mask & valid_median_mask, "new_price"
-    ] = np.minimum(new_price, np.ceil(medianprice * 2.2 / 10) * 10)
+    ] = filtered_df.loc[
+        condition_api & last_60_days_mask & valid_median_mask
+    ].apply(
+        lambda row: np.minimum(
+            row["new_price"],
+            np.ceil(row["median_price"] * 2.2 / 10) * 10
+        )
+        if row["new_price"] > np.ceil(row["median_price"] * 2.2 / 10) * 10
+        else row["new_price"],
+        axis=1
+    )
+
+    # Выводим результат для строки с kod = 'ЦБ023035' после обновления
+    #condition_central_bank = filtered_df["kod"] == "ЦБ023035"
+    #print(filtered_df.loc[condition_central_bank, ["kod", "delprice", "new_price", "median_price"]])
+
+
+    #filtered_df.to_excel('filtered_df.xlsx', index=False)
 
     # Проверка условий abc, xyz и продаж/покупок за последние 2 года
     def check_sales_only_and_no_purchases(row):
@@ -239,6 +281,8 @@ def calculate_new_prices_for_api(
     filtered_df.loc[condition_middleprice, "new_price"] = (
         np.ceil(middleprice[condition_middleprice] * 1.3 / 10) * 10
     )
+
+    
 
     # Возвращаем обновленный filtered_df
     return filtered_df
