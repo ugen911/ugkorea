@@ -24,6 +24,7 @@ def calculate_new_prices_for_api(
     )
 
     # Присваиваем переменные для удобства работы
+    tsenazakup = filtered_df.loc[condition_api, "tsenazakup"]
     delprice = filtered_df.loc[condition_api, "delprice"]
     middleprice = filtered_df.loc[condition_api, "middleprice"]
     medianprice = filtered_df.loc[condition_api, "median_price"]
@@ -260,6 +261,14 @@ def calculate_new_prices_for_api(
         np.ceil(delprice * 1.35 / 10) * 10,
     )
 
+    
+    condition_tsenazakup = (
+        condition_api
+        & maxprice.notna()
+        & (filtered_df.loc[condition_api, "new_price"] < tsenazakup * 1.1)
+    )
+
+
     # Применяем проверки только к строкам, где выполняется условие maxprice и middleprice
     condition_maxprice = (
         condition_api
@@ -282,7 +291,10 @@ def calculate_new_prices_for_api(
         np.ceil(middleprice[condition_middleprice] * 1.3 / 10) * 10
     )
 
-    
+        # Проверки на middleprice
+    filtered_df.loc[condition_tsenazakup, "new_price"] = (
+        np.ceil(tsenazakup[condition_tsenazakup] * 1.1 / 10) * 10
+    )
 
     # Возвращаем обновленный filtered_df
     return filtered_df
