@@ -37,6 +37,8 @@ if missing_kods:
     bool_cols = ['ne_ispolzuetsya_v_zakaze', 'nelikvid', 'zafiksirovat_minimalki', 'list_ozhidaniya']
     for col in bool_cols:
         new_rows[col] = False
+    # числовая колонка
+    new_rows['minimal'] = 0
     # объединение
     accessdata_df = pd.concat([accessdata_df, new_rows], ignore_index=True)
 else:
