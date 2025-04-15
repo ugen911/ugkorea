@@ -43,7 +43,7 @@ sales_long = monthly_sales.pivot_table(index=['kod', 'year_month'], values=['kol
 
 # Преобразуем столбцы year_month в строки
 sales_long['year_month'] = sales_long['year_month'].astype(str)
-
+sales_long['kod'] = sales_long['kod'].astype(str).str.strip()
 # Сохраняем результат в таблицу базы данных
 sales_long.to_sql('salespivot', engine, schema='public', if_exists='replace', index=False)
 
@@ -98,7 +98,7 @@ supplies_long = monthly_supplies.pivot_table(index=['kod', 'year_month'], values
 
 # Преобразуем столбцы year_month в строки
 supplies_long['year_month'] = supplies_long['year_month'].astype(str)
-
+supplies_long['kod'] = supplies_long['kod'].astype(str).str.strip()
 # Сохраняем результат в таблицу базы данных
 supplies_long.to_sql('suppliespivot', engine, schema='public', if_exists='replace', index=False)
 
