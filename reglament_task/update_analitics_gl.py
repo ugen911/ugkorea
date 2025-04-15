@@ -6,13 +6,15 @@ import logging
 import warnings
 
 # Настройка логгирования
-logging.basicConfig(filename='data_upload_errors.log', level=logging.INFO, format='%(asctime)s:%(levelname)s:%(message)s')
+logging.basicConfig(filename='data_upload_errors.log', level=logging.INFO, 
+                    format='%(asctime)s:%(levelname)s:%(message)s')
 
 
 def to_snake_case(s):
     s = translit(s, 'ru', reversed=True)
     s = s.lower().replace(' ', '_').replace('.', '_').replace('"', '').replace("'", '').replace(',', '').replace(';', '').replace('!', '').replace('?', '')
     return s
+
 
 def upload_csv_files(directory_path):
     engine = get_db_engine()
@@ -24,9 +26,8 @@ def upload_csv_files(directory_path):
     for filename in os.listdir(directory_path):
         if filename.endswith('.csv'):
             file_path = os.path.join(directory_path, filename)
-            # Удаление префиксов и транслитерация
+            # Удаление префиксов и транслитерация для формирования имени таблицы
             modified_name = filename.replace('Выгрузка_', '').replace('Выгрузка', '')
-            # Преобразование в snake_case с транслитерацией для имени таблицы
             table_name = to_snake_case(os.path.splitext(modified_name)[0])
 
             try:
@@ -36,18 +37,27 @@ def upload_csv_files(directory_path):
                     for warning in w:
                         if issubclass(warning.category, pd.errors.ParserWarning):
                             logging.warning(f"Warning while parsing {filename}: {warning.message}")
+
+                # Преобразование данных в кодировку UTF-8 с последующим удалением пробелов по краям.
+                # Используем apply с Series.map, чтобы избежать FutureWarning от applymap.
+                data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8').strip() if isinstance(x, str) else x))
                 
-                # Преобразование данных в кодировку UTF-8
-                data = data.apply(lambda col: col.map(lambda x: x.encode('utf-8').decode('utf-8') if isinstance(x, str) else x))
+                # Очищаем имена колонок: сначала удаляем пробелы по краям, затем применяем функцию to_snake_case
+                data.columns = [to_snake_case(col.strip() if isinstance(col, str) else col) for col in data.columns]
                 
-                # Преобразование названий колонок в нижний регистр и snake_case с учетом транслитерации
-                data.columns = [to_snake_case(col) for col in data.columns]
-                
-                date_columns = [col for col in data.columns if 'data' in col]  # 'дата' transliterates to 'data'
+                # Преобразование колонок с датами (если в имени содержится 'data')
+                date_columns = [col for col in data.columns if 'data' in col]
                 for col in date_columns:
                     data[col] = pd.to_datetime(data[col], errors='coerce', dayfirst=True)
 
-                data.to_sql(table_name, engine, if_exists='replace', index=False)
+                # Если таблица называется nomenklaturaprimenjaemost или nomenklatura и имеется колонка 'kod', делаем её индексом
+                if table_name in ['nomenklaturaprimenjaemost', 'nomenklatura'] and 'kod' in data.columns:
+                    data.set_index('kod', inplace=True)
+                    index_used = True
+                else:
+                    index_used = False
+
+                data.to_sql(table_name, engine, if_exists='replace', index=index_used)
                 print(f"Данные из {filename} успешно загружены в таблицу {table_name}.")
                 created_tables.append(table_name)
             except Exception as e:
@@ -56,12 +66,14 @@ def upload_csv_files(directory_path):
 
     return created_tables
 
+
 def print_first_five_rows(engine, table_name):
     query = f"SELECT * FROM {table_name} LIMIT 5"
     with engine.connect() as connection:
         result = pd.read_sql(query, connection)
         print(f"Первые 5 строк из таблицы '{table_name}':")
         print(result)
+
 
 if __name__ == "__main__":
     # Проверка доступности пути на диске D:
