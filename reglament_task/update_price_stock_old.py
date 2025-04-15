@@ -18,30 +18,41 @@ def load_data(file_path):
         exit()
 
 def snake_case(column_name):
+    # Удаляем пробелы по краям, затем приводим к нижнему регистру, транслитерируем и заменяем пробелы на нижнее подчеркивание
+    column_name = column_name.strip()
     column_name = column_name.lower()
     column_name = transliterate.translit(column_name, 'ru', reversed=True)
     column_name = re.sub(r'\s+', '_', column_name)
     column_name = re.sub(r'[^a-z0-9_]', '', column_name)
     return column_name
 
+def clean_string_columns(df):
+    """
+    Убираем пробелы и непечатные символы для всех строковых колонок в датафрейме.
+    """
+    # Применяем функцию только к строковым столбцам
+    df = df.apply(lambda col: col.str.strip() if col.dtype == 'object' else col)
+    df = df.apply(lambda col: col.str.encode('utf-8').str.decode('utf-8').str.strip() if col.dtype == 'object' else col)
+    return df
+
 def prepare_data(data):
-    # Convert columns to snake_case
+    # Преобразование названий столбцов в snake_case
     data.columns = [snake_case(col) for col in data.columns]
     
-    # Rename specific columns
+    # Переименовываем конкретное поле
     data.rename(columns={'polnoenaimenovanie': 'naimenovanie'}, inplace=True)
     
-    # Prepare nomenclature data, including the 'stellazh' column
+    # Подготовка данных номенклатуры, включая столбец 'stellazh'
     nomenklatura = data[['kod', 'naimenovanie', 'artikul', 'proizvoditel', 'edizm', 'pometkaudalenija', 'stellazh']]
     nomenklatura = nomenklatura[['kod', 'artikul', 'proizvoditel', 'naimenovanie', 'edizm', 'stellazh', 'pometkaudalenija']]
     
-    # Prepare stock data and convert to float
+    # Подготовка данных склада и преобразование в float
     stock = data[['kod', 'konost']].copy()
     stock['osnsklad'] = data['konost'].fillna(0).replace(',', '.', regex=True).astype(float)
     stock.drop(columns=['konost'], inplace=True)
     stock['zakazy_sklad'] = data['ostatokzakazy'].fillna(0).replace(',', '.', regex=True).astype(float)
     
-    # Prepare price data and convert to float
+    # Подготовка данных цены и преобразование в float
     price = data[['kod', 'tsenazakup', 'tsenarozn']].copy()
     price['tsenazakup'] = price['tsenazakup'].fillna(0).replace(',', '.', regex=True).astype(float)
     price['tsenarozn'] = price['tsenarozn'].fillna(0).replace(',', '.', regex=True).astype(float)
@@ -99,10 +110,19 @@ def prepare_analog_data(file_path):
         return analog_df
     return None
 
-def export_to_db(engine, df, table_name, index_col='kod'):
+def export_to_db(engine, df, table_name):
     try:
+        # Приводим названия столбцов к snake_case и очищаем их от пробелов
         df.columns = [snake_case(col) for col in df.columns]
-        df.set_index(index_col, inplace=True)
+        # Очищаем данные в строковых столбцах от лишних пробелов и непечатных символов
+        df = clean_string_columns(df)
+        
+        # Если в DataFrame существует столбец "kod" или "kod_1s", делаем его индексом
+        if 'kod' in df.columns:
+            df.set_index('kod', inplace=True)
+        elif 'kod_1s' in df.columns:
+            df.set_index('kod_1s', inplace=True)
+        
         df.to_sql(table_name, engine, index=True, if_exists='replace')
         print(f"Таблица '{table_name}' была успешно создана или заменена.")
     except OperationalError as e:
@@ -117,16 +137,6 @@ def print_first_five_rows(engine, table_name):
         for row in rows:
             print(row)
 
-def clean_string_columns(df):
-    """
-    Убираем пробелы и непечатные символы для всех строковых колонок в датафрейме.
-    """
-    # Применяем функцию только к строковым столбцам
-    df = df.apply(lambda col: col.str.strip() if col.dtype == 'object' else col)
-    df = df.apply(lambda col: col.str.encode('utf-8').str.decode('utf-8').str.strip() if col.dtype == 'object' else col)
-    return df
-
-
 def load_middle_max_price_data(file_path):
     try:
         data = pd.read_excel(file_path)
@@ -139,7 +149,6 @@ def prepare_middle_max_price_data(data):
     # Преобразование названий колонок в snake_case
     data.columns = [snake_case(col) for col in data.columns]
 
-
     # Выбираем нужные колонки, используя новые названия
     middle_max_price = data[['kod_nomenklatury', 'srednjaja_tsena_zakupki', 'maksimalnaja_tsena_tovara']].copy()
 
@@ -147,7 +156,7 @@ def prepare_middle_max_price_data(data):
     middle_max_price['srednjaja_tsena_zakupki'] = middle_max_price['srednjaja_tsena_zakupki'].fillna(0).replace(',', '.', regex=True).astype(float)
     middle_max_price['maksimalnaja_tsena_tovara'] = middle_max_price['maksimalnaja_tsena_tovara'].fillna(0).replace(',', '.', regex=True).astype(float)
 
-    # Переименуем колонки в финальные названия, если нужно для базы данных
+    # Переименовываем колонки для соответствия структуре базы данных
     middle_max_price.rename(columns={
         'kod_nomenklatury': 'kod',
         'srednjaja_tsena_zakupki': 'middleprice',
@@ -155,8 +164,6 @@ def prepare_middle_max_price_data(data):
     }, inplace=True)
 
     return middle_max_price
-
-
 
 def main():
     # Подключение к базе данных
@@ -186,7 +193,7 @@ def main():
     # Загрузка и обработка основных данных
     data = load_data(data_file_path)
     if data is not None:
-        data = clean_string_columns(data)  # Удаление пробелов и непечатных символов
+        data = clean_string_columns(data)  # Удаление пробелов и непечатных символов из данных
         nomenklatura, stock, price = prepare_data(data)
         export_to_db(engine, nomenklatura, 'nomenklaturaold')
         export_to_db(engine, stock, 'stockold')
@@ -195,15 +202,15 @@ def main():
     # Загрузка и обработка данных аналогов
     analog_data = prepare_analog_data(analog_file_path)
     if analog_data is not None:
-        analog_data = clean_string_columns(analog_data)  # Удаление пробелов и непечатных символов
-        export_to_db(engine, analog_data, 'groupanalogiold', index_col='kod_1s')
+        analog_data = clean_string_columns(analog_data)  # Очистка строковых данных
+        export_to_db(engine, analog_data, 'groupanalogiold')
 
     # Загрузка и обработка данных средней и максимальной цены
     middle_max_data = load_middle_max_price_data(middle_max_file_path)
     if middle_max_data is not None:
-        middle_max_data = clean_string_columns(middle_max_data)  # Удаление пробелов и непечатных символов
+        middle_max_data = clean_string_columns(middle_max_data)  # Очистка строковых данных
         middle_max_price = prepare_middle_max_price_data(middle_max_data)
-        export_to_db(engine, middle_max_price, 'middlemaxprice', index_col='kod')
+        export_to_db(engine, middle_max_price, 'middlemaxprice')
 
     # Вывод первых 5 строк из каждой созданной таблицы
     print_first_five_rows(engine, 'nomenklaturaold')
@@ -216,4 +223,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
