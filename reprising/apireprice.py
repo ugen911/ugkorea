@@ -80,6 +80,7 @@ def calculate_api_repricing(
     new_price[low]  = np.ceil(dp[low]  * 1.8  / 10) * 10
     new_price[mid]  = np.ceil(dp[mid]  * 1.65 / 10) * 10
     new_price[high] = np.ceil(dp[high] * 1.35 / 10) * 10
+    
 
     def pick_pct(row):
         no_act = not has_activity_last_24_months(row["kod"])
@@ -90,26 +91,27 @@ def calculate_api_repricing(
     new_price[other] = np.ceil(dp[other] * pcts / 10) * 10
 
     filtered_df.loc[condition_api, "new_price"] = new_price
+    
 
     # 1) recent <14 дней → tsenarozn
     recent_mask = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 14)
     idx14 = filtered_df.index[condition_api & recent_mask]
     filtered_df.loc[idx14, "new_price"] = filtered_df.loc[idx14, "tsenarozn"]
-
+    
     # 2) cap по median_price*1.8 для <60 дней
     mask60 = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 60)
     med_ok = filtered_df["median_price"].notna()
     idx60 = filtered_df.index[condition_api & mask60 & med_ok]
     cap60 = np.ceil(filtered_df.loc[idx60, "median_price"] * 1.8 / 10) * 10
     filtered_df.loc[idx60, "new_price"] = np.minimum(filtered_df.loc[idx60, "new_price"], cap60)
-
+    
     # 3) общий cap по median_price*2.0
     idx_med = filtered_df.index[condition_api & med_ok]
     cap2 = np.ceil(filtered_df.loc[idx_med, "median_price"] * 2.0 / 10) * 10
     filtered_df.loc[idx_med, "new_price"] = np.minimum(filtered_df.loc[idx_med, "new_price"], cap2)
-
+    
     # 4) минимум по tsenarozn*1.1, middleprice*1.3, maxprice*1.1
-    ts = filtered_df.loc[condition_api, "tsenarozn"].fillna(0)
+    ts = filtered_df.loc[condition_api, "tsenazakup"].fillna(0)
     mp = filtered_df.loc[condition_api, "middleprice"].fillna(0)
     mx = filtered_df.loc[condition_api, "maxprice"].fillna(0)
 
