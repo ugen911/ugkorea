@@ -153,9 +153,6 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         # Записываем результат
         filtered_df.at[idx, "new_price"] = new_price
 
-
-
-
     # 6) Пересчёт base_percent
     
     valid = filtered_df["delprice"].notna() & filtered_df["new_price"].notna()
@@ -215,3 +212,67 @@ def adjust_prices_without_delprice(filtered_df):
 
 
 
+def adjust_new_price_by_peer_median(filtered_df):
+    """
+    Для товаров без delprice, without delsklad и median_price и с периодом «36+»
+    Ограничивает их new_price по медиане new_price похожих товаров (type_detail + proizvoditel),
+    если таких товаров больше трёх, с коэффициентом ×1.5 и округлением до десятков,
+    затем применяет внешние пороги по maxprice и middleprice.
+    """
+    import numpy as np
+    import pandas as pd
+
+    # 1) Определяем дату «36+»
+    now     = pd.Timestamp.now()
+    last_36 = now - pd.DateOffset(months=36)
+
+    # 2) Готовим колонку last_purchase точно так же, как в оригинальной функции
+    filtered_df["data"] = pd.to_datetime(
+        filtered_df["data"], format="%d.%m.%Y %H:%M", errors="coerce"
+    )
+    filtered_df["datasozdanija"] = pd.to_datetime(
+        filtered_df.get("datasozdanija", None), errors="coerce"
+    )
+    filtered_df["last_purchase"] = filtered_df["data"].fillna(
+        filtered_df["datasozdanija"]
+    )
+
+    # 3) Формируем маску: период «36+» и отсутствуют delprice, delsklad и median_price
+    mask_period = filtered_df["last_purchase"].isna() | (filtered_df["last_purchase"] <= last_36)
+    mask_missing = (
+        filtered_df["delprice"].isna()
+        & (filtered_df["delsklad"].isna() | (filtered_df["delsklad"] == ""))
+        & filtered_df["median_price"].isna()
+    )
+    mask = mask_period & mask_missing
+
+    # 4) Проходим по каждому такому товару
+    for idx, row in filtered_df.loc[mask].iterrows():
+        тип       = row["type_detail"]
+        произв    = row["proizvoditel"]
+        orig      = row["new_price"]
+
+        # 4.1) Находим «похожие» товары с уже рассчитанным new_price
+        peers = filtered_df[
+            (filtered_df["new_price"].notna())
+            & (filtered_df["type_detail"] == тип)
+            & (filtered_df["proizvoditel"] == произв)
+        ]["new_price"]
+
+        # 4.2) Если таких больше трёх — берём медиану и ограничиваем
+        if len(peers) > 3:
+            median_peer = peers.median()
+            cap = np.ceil((median_peer * 1.3) / 10) * 10
+            new_price = min(orig, cap)
+
+            # 4.3) Внешние пороги по maxprice и middleprice (как в оригинале)
+            if pd.notna(row["maxprice"]):
+                floor_max = np.ceil((row["maxprice"] * 1.1) / 10) * 10
+                new_price = max(new_price, floor_max)
+            if pd.notna(row["middleprice"]):
+                floor_mid = np.ceil((row["middleprice"] * 1.3) / 10) * 10
+                new_price = max(new_price, floor_mid)
+
+            filtered_df.at[idx, "new_price"] = new_price
+
+    return filtered_df

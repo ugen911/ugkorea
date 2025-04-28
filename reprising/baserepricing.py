@@ -3,7 +3,7 @@ from ugkorea.db.database import get_db_engine
 from ugkorea.reprising.notapireprice import not_api_calculate_new_prices
 from ugkorea.reprising.apireprice import calculate_new_prices_for_api
 from ugkorea.reprising.uppricebyclass import adjust_prices_by_class
-from ugkorea.reprising.nonliquid import adjust_new_price_for_non_liquid, adjust_prices_without_delprice
+from ugkorea.reprising.nonliquid import adjust_new_price_for_non_liquid, adjust_prices_without_delprice, adjust_new_price_by_peer_median
 from ugkorea.reprising.inflation import indeksation
 from ugkorea.reprising.analogkonkurentbalance import main as rebalance
 from ugkorea.reprising.upload import regtament_view, export_data
@@ -46,13 +46,14 @@ df_new = adjust_prices_by_class(filtered_df=df, salespivot=salespivot, suppliesp
 print('nonliquid')
 res = adjust_new_price_for_non_liquid(df_new, salespivot)
 df_1 = adjust_prices_without_delprice(res)
+gh = adjust_new_price_by_peer_median(df_1)
 # df_1.to_csv("filtered_non_liquid__without_delprice_df.csv")
 # Проверить если у товаров с A A1 при этом X1 X поднятие цены за последние 3 года коррелирует с падением продаж при этом наценка относительно median_price > 50%
 # то пробуем снижать цену не протеворечит проверки на максимум и среднюю. Можно рассчитать сезонку по медиане и +- от медианы по каждому месяцу общих продаж учесть сезонность и если падение продаж при повышении цены значительно выше сезонки то значит есть зависимость от цены
 
 # ПРоверяем изменение цен по месяцам в priceendmonth и stockendmonth должны быть положительные если все таки new_price до сих под пуст должны обеспечить индексацию товаров на 7% год если товар не дорогостоящий не выше 5000 рублей в розницу если выше пусть считает 3 наценки считает смотря на изменение цен в priceandmonth и нацениеваем на срок
 print("inflation")
-df_2 = indeksation(df_1, priceendmonth)
+df_2 = indeksation(gh, priceendmonth)
 # df_2.to_csv("filtered_df_indeksation.csv")
 
 # Преверяем цены у конкурентов, пытаемся подняться или спуститься под них
