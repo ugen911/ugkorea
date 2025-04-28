@@ -6,9 +6,12 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
     """
     Для API-позиций с уже рассчитанным new_price «зажимает» его в диапазоны по возрасту закупки:
       • >36 мес: 70–80%
-      • 24–36 мес: 90–110%  # изменено
-      • 18–24 мес: 110–130%  # изменено
+      • 24–36 мес: 90–110%
+      • 18–24 мес: 110–130%
       • 12–18 мес: 1.37–1.40 (для base_price 300–10000) или 100–110% иначе
+
+    Если delprice ≤ 300, по всем периодам нижняя граница не может быть ниже 1.4×delprice.
+    Если 300 < delprice ≤ 1000, по всем периодам нижняя граница не может быть ниже 1.2×delprice.
     Плюс dynamic boost (до ×1.30) по числу месяцев с продажами и cap на 1.5×base_price.
     Затем доп. «зажим» по avg_tsenarozn, не ниже maxprice×1.1 и middleprice×1.3.
     Пересчитывает base_percent.
@@ -53,8 +56,8 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         ).sum() > 2
 
     boost_factors = {"36+":1.2, "24-36":1.25, "18-24":1.37, "12-18":1.37}
-    avg_lowf      = {"36+":0.5, "24-36":0.9, "18-24":1.1, "12-18":0.7}
-    avg_upf       = {"36+":0.8, "24-36":1.1, "18-24":1.3, "12-18":1.0}
+    avg_lowf      = {"36+":0.5,   "24-36":0.9,  "18-24":1.1, "12-18":0.7}
+    avg_upf       = {"36+":0.8,   "24-36":1.1,  "18-24":1.3, "12-18":1.0}
 
     def clamp(orig, low, high):
         return np.ceil(min(max(orig, low), high) / 10) * 10
@@ -70,7 +73,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         avg_tz    = row["avg_tsenarozn"]
         cur_tz    = row["tsenarozn"]
 
-        # 5.1) Вычисляем base_price
+        # 5.1) Вычисляем base_price из median_price/delprice
         mp, dp = row["median_price"], row["delprice"]
         if pd.notna(mp) and pd.notna(dp):
             base_price = max(mp, dp)
@@ -79,7 +82,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         else:
             base_price = dp
 
-        # 5.2) Определяем период по дате закупки
+        # 5.2) Определяем период по дате закупки и устанавливаем low_pct/high_pct
         if pd.isna(dt) or dt <= last_36:
             period    = "36+"
             low_pct, high_pct = 0.7, 0.8
@@ -87,12 +90,12 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
 
         elif dt <= last_24:
             period    = "24-36"
-            low_pct, high_pct = 0.9, 1.1  # изменено
+            low_pct, high_pct = 0.9, 1.1
             boost     = has_sales_more_than_two(kod, last_36, last_24)
 
         elif dt <= last_18:
             period    = "18-24"
-            low_pct, high_pct = 1.1, 1.3  # изменено
+            low_pct, high_pct = 1.1, 1.3
             boost     = has_sales_more_than_two(kod, last_24, last_18)
 
         elif dt <= last_12:
@@ -104,22 +107,32 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
             boost     = has_sales_more_than_two(kod, last_18, last_12)
 
         else:
-            # моложе 12 мес — пропускаем
+            # моложе 12 мес — не трогаем
             continue
 
         # 5.3) Расчёт диапазона
         low  = base_price * low_pct
         high = base_price * high_pct
 
-        # 5.4) Boost и cap
+        # 5.4) Универсальное нижнее ограничение на основе delprice
+        if dp <= 300:
+            min_floor = dp * 1.4
+            low       = max(low, min_floor)
+            high      = max(high, min_floor)
+        elif dp <= 1000:
+            min_floor = dp * 1.2
+            low       = max(low, min_floor)
+            high      = max(high, min_floor)
+
+        # 5.5) Boost и cap
         if boost:
             high *= boost_factors[period]
             high  = min(high, base_price * 1.5)
 
-        # 5.5) Clamp
+        # 5.6) Первичный clamp и округление
         new_price = clamp(orig, low, high)
 
-        # 5.6) Clamp по avg_tsenarozn
+        # 5.7) Clamp по avg_tsenarozn
         if pd.notna(avg_tz):
             min_a = np.ceil((avg_tz * avg_lowf[period]) / 10) * 10
             max_a = np.ceil((avg_tz * avg_upf[period]) / 10) * 10
@@ -127,7 +140,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         elif new_price > cur_tz:
             new_price = cur_tz
 
-        # 5.7) Внешние пороги
+        # 5.8) Внешние пороги
         if pd.notna(row["maxprice"]):
             floor = np.ceil((row["maxprice"] * 1.1) / 10) * 10
             new_price = max(new_price, floor)
