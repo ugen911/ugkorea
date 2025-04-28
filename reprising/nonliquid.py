@@ -62,7 +62,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
     
     def clamp(orig, low, high):
         return np.ceil(min(max(orig, low), high) / 10) * 10
-    print(filtered_df.loc[filtered_df["kod"] == "00003536", "new_price"].values)
+    
     # 4) Подсчёт уникальных месяцев продаж
     sales_months = salespivot.groupby("kod")["year_month"].nunique()
 
@@ -71,7 +71,9 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         orig    = row["new_price"]
         dt      = row["last_purchase"]
         kod     = row["kod"]
-        mp, dp  = row["median_price"], row["delprice"]
+        mp      = row["median_price"]
+        dp      = row["delprice"]
+        tz      = row["tsenazakup"]
 
         # 5.1) Вычисляем base_price
         if pd.notna(mp) and pd.notna(dp):
@@ -84,7 +86,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         # 5.2) Определяем период и low_pct/high_pct
         if pd.isna(dt) or dt <= last_36:
             period    = "36+"
-            low_pct, high_pct = 0.5, 0.8
+            low_pct, high_pct = 0.4, 0.5
             boost     = has_sales_more_than_two(kod, last_36, now)
         elif dt <= last_24:
             period    = "24-36"
@@ -122,14 +124,23 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
             high *= boost_factors[period]
             high  = min(high, base_price * 1.5)
 
-        # 5.6) Первичный clamp
+        # 5.6) Первый clamp и округление
         new_price = clamp(orig, low, high)
 
         # 5.7) Ограничение по median_price
         if pd.notna(mp):
-            min_m = np.ceil((mp * avg_lowf[period])  / 10) * 10
-            max_m = np.ceil((mp * avg_upf[period])  / 10) * 10
+            min_m = np.ceil((mp * avg_lowf[period]) / 10) * 10
+            max_m = np.ceil((mp * avg_upf[period]) / 10) * 10
             new_price = min(max(new_price, min_m), max_m)
+
+        # 5.7.1) Дополнительный cap для периода "36+" по tsenazakup
+        if period == "36+" and pd.notna(tz):
+            if tz >= 1000:
+                cap300 = np.ceil((tz * 3.0) / 10) * 10
+                new_price = min(new_price, cap300)
+            if tz > 8000:
+                cap220 = np.ceil((tz * 2.2) / 10) * 10
+                new_price = min(new_price, cap220)
 
         # 5.8) Внешние пороги по maxprice и middleprice
         if pd.notna(row["maxprice"]):
@@ -146,7 +157,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
 
 
     # 6) Пересчёт base_percent
-    print(filtered_df.loc[filtered_df["kod"] == "00003536", "new_price"].values)
+    
     valid = filtered_df["delprice"].notna() & filtered_df["new_price"].notna()
     filtered_df.loc[valid, "base_percent"] = (
         (filtered_df.loc[valid, "new_price"] - filtered_df.loc[valid, "delprice"])
