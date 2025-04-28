@@ -3,357 +3,195 @@ import numpy as np
 
 
 def adjust_new_price_for_non_liquid(filtered_df, salespivot):
-    current_date = pd.Timestamp.now()
-    last_24_months = current_date - pd.DateOffset(months=24)
-    last_18_months = current_date - pd.DateOffset(months=18)
-    last_12_months = current_date - pd.DateOffset(months=12)
+    """
+    Для API-позиций с уже рассчитанным new_price «зажимает» его в диапазоны по возрасту закупки:
+      • >36 мес: 70–80%
+      • 24–36 мес: 90–110%  # изменено
+      • 18–24 мес: 110–130%  # изменено
+      • 12–18 мес: 1.37–1.40 (для base_price 300–10000) или 100–110% иначе
+    Плюс dynamic boost (до ×1.30) по числу месяцев с продажами и cap на 1.5×base_price.
+    Затем доп. «зажим» по avg_tsenarozn, не ниже maxprice×1.1 и middleprice×1.3.
+    Пересчитывает base_percent.
+    """
+    now      = pd.Timestamp.now()
+    last_12  = now - pd.DateOffset(months=12)
+    last_18  = now - pd.DateOffset(months=18)
+    last_24  = now - pd.DateOffset(months=24)
+    last_36  = now - pd.DateOffset(months=36)
 
-    # Преобразуем колонку 'data' в datetime
+    # 1) Преобразуем даты
     filtered_df["data"] = pd.to_datetime(
         filtered_df["data"], format="%d.%m.%Y %H:%M", errors="coerce"
     )
-
-    # Фильтр для наличия 'api' в колонке delsklad
-    api_filter = filtered_df["delsklad"].str.contains("api", case=False, na=False)
-
-    # Фильтруем позиции с рассчитанным new_price, если delprice или median_price заполнены и delsklad содержит "api"
-    condition = (
-        filtered_df["new_price"].notna()
-        & (filtered_df["delprice"].notna() | filtered_df["median_price"].notna())
-        & api_filter
+    filtered_df["datasozdanija"] = pd.to_datetime(
+        filtered_df.get("datasozdanija", None), errors="coerce"
+    )
+    filtered_df["last_purchase"] = filtered_df["data"].fillna(
+        filtered_df["datasozdanija"]
     )
 
-    # Рассчитываем среднюю цену tsenarozn для каждой группы type_detail и is_original (если не менее 5 элементов в группе)
-    group_avg_price = filtered_df.groupby(["type_detail", "is_original"])[
-        "tsenarozn"
-    ].transform(lambda x: x.mean() if len(x) >= 5 else np.nan)
+    # 2) Средняя tsenarozn (группы ≥5 записей)
+    filtered_df["avg_tsenarozn"] = (
+        filtered_df
+        .groupby(["type_detail", "is_original"])["tsenarozn"]
+        .transform(lambda x: x.mean() if len(x) >= 5 else np.nan)
+    )
 
-    # Добавляем рассчитанные средние цены в основной датафрейм
-    filtered_df["avg_tsenarozn"] = group_avg_price
+    # 3) Маска «API + готовый new_price + есть delprice или median_price»
+    api_mask = filtered_df["delsklad"].str.contains("api", case=False, na=False)
+    pm_mask  = (
+        filtered_df["new_price"].notna()
+        & (filtered_df["delprice"].notna() | filtered_df["median_price"].notna())
+    )
+    mask     = api_mask & pm_mask
 
-    # Инициализируем колонку для логирования
-    filtered_df["price_log"] = ""
-
-    # Проверка на наличие покупок за указанный период
-    def is_non_liquid(data):
-        if pd.isna(
-            data
-        ):  # Если дата пустая, считаем, что последний приход был раньше 24 месяцев
-            return True
-        else:
-            return data <= last_24_months
-
-    # Проверка на количество месяцев с продажами
-    def has_sales_more_than_two(kod, start_period, end_period):
-        sales_data = salespivot[
+    def has_sales_more_than_two(kod, start, end):
+        return (
             (salespivot["kod"] == kod)
-            & (salespivot["year_month"] >= start_period)
-            & (salespivot["year_month"] < end_period)
-        ]
-        return sales_data.shape[0] > 2  # True, если было больше 2 месяцев с продажами
+            & (salespivot["year_month"] >= start)
+            & (salespivot["year_month"] < end)
+        ).sum() > 2
 
-    # Общая логика расчета цены с округлением до ближайших 10 вверх
-    def calculate_price(
-        row,
-        lower_bound_percent,
-        upper_bound_percent,
-        sales_threshold=False,
-        sales_period=None,
-    ):
-        median_price = row["median_price"]
-        delprice = row["delprice"]
+    boost_factors = {"36+":1.2, "24-36":1.25, "18-24":1.37, "12-18":1.37}
+    avg_lowf      = {"36+":0.5, "24-36":0.9, "18-24":1.1, "12-18":0.7}
+    avg_upf       = {"36+":0.8, "24-36":1.1, "18-24":1.3, "12-18":1.0}
 
-        if pd.notna(median_price) and pd.notna(delprice):
-            lower_bound = max(
-                median_price * lower_bound_percent, delprice * lower_bound_percent
-            )
-            upper_bound = max(
-                median_price * upper_bound_percent, delprice * upper_bound_percent
-            )
-        elif pd.notna(median_price):
-            lower_bound = median_price * lower_bound_percent
-            upper_bound = median_price * upper_bound_percent
-        elif pd.notna(delprice):
-            lower_bound = delprice * lower_bound_percent
-            upper_bound = delprice * upper_bound_percent
+    def clamp(orig, low, high):
+        return np.ceil(min(max(orig, low), high) / 10) * 10
 
-        # Наценка при наличии более двух месяцев с продажами
-        if sales_threshold:
-            if sales_period == "24+":
-                upper_bound *= 1.2
-            elif sales_period == "18-24":
-                upper_bound *= 1.25
-            elif sales_period == "12-18":
-                upper_bound *= 1.37
+    # 4) Подсчёт уникальных месяцев продаж
+    sales_months = salespivot.groupby("kod")["year_month"].nunique()
 
-        # Округляем до ближайших 10 вверх
-        new_price = np.ceil(upper_bound / 10) * 10
-        return new_price
+    # 5) Основной цикл
+    for idx, row in filtered_df.loc[mask].iterrows():
+        orig      = row["new_price"]
+        dt        = row["last_purchase"]
+        kod       = row["kod"]
+        avg_tz    = row["avg_tsenarozn"]
+        cur_tz    = row["tsenarozn"]
 
-    # Применяем фильтры и корректируем цены
-    for index, row in filtered_df[condition].iterrows():
-        kod = row["kod"]
-        last_purchase_date = row["data"]
-        avg_tsenarozn = row["avg_tsenarozn"]
-        current_tsenarozn = row["tsenarozn"]
+        # 5.1) Вычисляем base_price
+        mp, dp = row["median_price"], row["delprice"]
+        if pd.notna(mp) and pd.notna(dp):
+            base_price = max(mp, dp)
+        elif pd.notna(mp):
+            base_price = mp
+        else:
+            base_price = dp
 
-        # Инициализация лога для данной строки
-        price_log = []
+        # 5.2) Определяем период по дате закупки
+        if pd.isna(dt) or dt <= last_36:
+            period    = "36+"
+            low_pct, high_pct = 0.7, 0.8
+            boost     = has_sales_more_than_two(kod, last_36, now)
 
-        # Логика для полностью неликвидных позиций (не покупались 24 месяца и больше)
-        if is_non_liquid(last_purchase_date):
-            price_log.append("Position is non-liquid for 24+ months.")
-            if has_sales_more_than_two(kod, last_24_months, current_date):
-                new_price = calculate_price(
-                    row, 0.7, 0.8, sales_threshold=True, sales_period="24+"
-                )
-                price_log.append(
-                    f"Calculated new_price with 24+ months and sales > 2: {new_price}"
-                )
+        elif dt <= last_24:
+            period    = "24-36"
+            low_pct, high_pct = 0.9, 1.1  # изменено
+            boost     = has_sales_more_than_two(kod, last_36, last_24)
+
+        elif dt <= last_18:
+            period    = "18-24"
+            low_pct, high_pct = 1.1, 1.3  # изменено
+            boost     = has_sales_more_than_two(kod, last_24, last_18)
+
+        elif dt <= last_12:
+            period    = "12-18"
+            if 300 <= base_price <= 10000:
+                low_pct, high_pct = 1.37, 1.40
             else:
-                new_price = calculate_price(row, 0.7, 0.8)
-                price_log.append(
-                    f"Calculated new_price with 24+ months and sales <= 2: {new_price}"
-                )
+                low_pct, high_pct = 1.0, 1.1
+            boost     = has_sales_more_than_two(kod, last_18, last_12)
 
-            # Проверка, если new_price выше tsenarozn и avg_tsenarozn рассчитана
-            if pd.notna(avg_tsenarozn) and new_price > current_tsenarozn:
-                max_limit = np.ceil((avg_tsenarozn * 0.8) / 10) * 10
-                if new_price > max_limit:
-                    filtered_df.at[index, "new_price"] = max_limit
-                    price_log.append(
-                        f"Adjusted new_price to max limit (80% of avg_tsenarozn): {max_limit}"
-                    )
-                else:
-                    filtered_df.at[index, "new_price"] = new_price
-                    price_log.append(f"New_price set to calculated value: {new_price}")
-            elif pd.isna(avg_tsenarozn) and new_price > current_tsenarozn:
-                filtered_df.at[index, "new_price"] = current_tsenarozn
-                price_log.append(
-                    f"Avg_tsenarozn not available; set new_price to tsenarozn: {current_tsenarozn}"
-                )
+        else:
+            # моложе 12 мес — пропускаем
+            continue
 
-            # Дополнительная проверка: если new_price ниже tsenarozn
-            if new_price < current_tsenarozn:
-                if pd.notna(avg_tsenarozn):
-                    min_limit = np.ceil((avg_tsenarozn * 0.5) / 10) * 10
-                    if new_price < min_limit:
-                        filtered_df.at[index, "new_price"] = min_limit
-                        price_log.append(
-                            f"Adjusted new_price to min limit (50% of avg_tsenarozn): {min_limit}"
-                        )
-                else:
-                    if new_price < np.ceil((current_tsenarozn * 0.7) / 10) * 10:
-                        filtered_df.at[index, "new_price"] = (
-                            np.ceil(current_tsenarozn / 10) * 10
-                        )
-                        price_log.append(
-                            f"Avg_tsenarozn not available; set new_price to tsenarozn: {current_tsenarozn}"
-                        )
+        # 5.3) Расчёт диапазона
+        low  = base_price * low_pct
+        high = base_price * high_pct
 
-        # Логика для неликвида (не покупались 18-24 месяца)
-        elif (
-            last_purchase_date <= last_24_months and last_purchase_date > last_18_months
-        ):
-            price_log.append("Position is non-liquid for 18-24 months.")
-            if has_sales_more_than_two(kod, last_18_months, last_24_months):
-                new_price = calculate_price(
-                    row, 0.8, 0.9, sales_threshold=True, sales_period="18-24"
-                )
-                price_log.append(
-                    f"Calculated new_price with 18-24 months and sales > 2: {new_price}"
-                )
-            else:
-                new_price = calculate_price(row, 0.8, 0.9)
-                price_log.append(
-                    f"Calculated new_price with 18-24 months and sales <= 2: {new_price}"
-                )
+        # 5.4) Boost и cap
+        if boost:
+            high *= boost_factors[period]
+            high  = min(high, base_price * 1.5)
 
-            if pd.notna(avg_tsenarozn) and new_price > current_tsenarozn:
-                max_limit = np.ceil((avg_tsenarozn * 0.9) / 10) * 10
-                if new_price > max_limit:
-                    filtered_df.at[index, "new_price"] = max_limit
-                    price_log.append(
-                        f"Adjusted new_price to max limit (90% of avg_tsenarozn): {max_limit}"
-                    )
-                else:
-                    filtered_df.at[index, "new_price"] = new_price
-                    price_log.append(f"New_price set to calculated value: {new_price}")
-            elif pd.isna(avg_tsenarozn) and new_price > current_tsenarozn:
-                filtered_df.at[index, "new_price"] = current_tsenarozn
-                price_log.append(
-                    f"Avg_tsenarozn not available; set new_price to tsenarozn: {current_tsenarozn}"
-                )
+        # 5.5) Clamp
+        new_price = clamp(orig, low, high)
 
-            # Дополнительная проверка: если new_price ниже tsenarozn
-            if new_price < current_tsenarozn:
-                if pd.notna(avg_tsenarozn):
-                    min_limit = np.ceil((avg_tsenarozn * 0.6) / 10) * 10
-                    if new_price < min_limit:
-                        filtered_df.at[index, "new_price"] = min_limit
-                        price_log.append(
-                            f"Adjusted new_price to min limit (60% of avg_tsenarozn): {min_limit}"
-                        )
-                else:
-                    if new_price < np.ceil((current_tsenarozn * 0.7) / 10) * 10:
-                        filtered_df.at[index, "new_price"] = (
-                            np.ceil(current_tsenarozn / 10) * 10
-                        )
-                        price_log.append(
-                            f"Avg_tsenarozn not available; set new_price to tsenarozn: {current_tsenarozn}"
-                        )
+        # 5.6) Clamp по avg_tsenarozn
+        if pd.notna(avg_tz):
+            min_a = np.ceil((avg_tz * avg_lowf[period]) / 10) * 10
+            max_a = np.ceil((avg_tz * avg_upf[period]) / 10) * 10
+            new_price = min(max(new_price, min_a), max_a)
+        elif new_price > cur_tz:
+            new_price = cur_tz
 
-        # Логика для неликвида (не покупались 12-18 месяцев)
-        elif (
-            last_purchase_date <= last_18_months and last_purchase_date > last_12_months
-        ):
-            price_log.append("Position is non-liquid for 12-18 months.")
-            if has_sales_more_than_two(kod, last_12_months, last_18_months):
-                new_price = calculate_price(
-                    row, 1.0, 1.1, sales_threshold=True, sales_period="12-18"
-                )
-                price_log.append(
-                    f"Calculated new_price with 12-18 months and sales > 2: {new_price}"
-                )
-            else:
-                new_price = calculate_price(row, 1.0, 1.1)
-                price_log.append(
-                    f"Calculated new_price with 12-18 months and sales <= 2: {new_price}"
-                )
+        # 5.7) Внешние пороги
+        if pd.notna(row["maxprice"]):
+            floor = np.ceil((row["maxprice"] * 1.1) / 10) * 10
+            new_price = max(new_price, floor)
+        if pd.notna(row["middleprice"]):
+            floor = np.ceil((row["middleprice"] * 1.3) / 10) * 10
+            new_price = max(new_price, floor)
 
-            if pd.notna(avg_tsenarozn) and new_price > current_tsenarozn:
-                max_limit = np.ceil((avg_tsenarozn * 1.0) / 10) * 10
-                if new_price > max_limit:
-                    filtered_df.at[index, "new_price"] = max_limit
-                    price_log.append(
-                        f"Adjusted new_price to max limit (100% of avg_tsenarozn): {max_limit}"
-                    )
-                else:
-                    filtered_df.at[index, "new_price"] = new_price
-                    price_log.append(f"New_price set to calculated value: {new_price}")
-            elif pd.isna(avg_tsenarozn) and new_price > current_tsenarozn:
-                filtered_df.at[index, "new_price"] = current_tsenarozn
-                price_log.append(
-                    f"Avg_tsenarozn not available; set new_price to tsenarozn: {current_tsenarozn}"
-                )
+        filtered_df.at[idx, "new_price"] = new_price
 
-            # Дополнительная проверка: если new_price ниже tsenarozn
-            if new_price < current_tsenarozn:
-                if pd.notna(avg_tsenarozn):
-                    min_limit = np.ceil((avg_tsenarozn * 0.7) / 10) * 10
-                    if new_price < min_limit:
-                        filtered_df.at[index, "new_price"] = min_limit
-                        price_log.append(
-                            f"Adjusted new_price to min limit (70% of avg_tsenarozn): {min_limit}"
-                        )
-                else:
-                    if new_price < np.ceil((current_tsenarozn * 0.7) / 10) * 10:
-                        filtered_df.at[index, "new_price"] = (
-                            np.ceil(current_tsenarozn / 10) * 10
-                        )
-                        price_log.append(
-                            f"Avg_tsenarozn not available; set new_price to tsenarozn: {current_tsenarozn}"
-                        )
-
-        # Проверка и корректировка на maxprice и middleprice
-        maxprice = row["maxprice"]
-        middleprice = row["middleprice"]
-
-        # Проверяем maxprice, чтобы new_price не был ниже maxprice + 10%
-        if pd.notna(maxprice):
-            max_limit = np.ceil((maxprice * 1.1) / 10) * 10
-            if filtered_df.at[index, "new_price"] < max_limit:
-                filtered_df.at[index, "new_price"] = max_limit
-                price_log.append(
-                    f"Adjusted new_price to not be below maxprice + 10%: {max_limit}"
-                )
-
-        # Проверяем middleprice, чтобы new_price не был ниже middleprice + 30%
-        if pd.notna(middleprice):
-            min_limit = np.ceil((middleprice * 1.3) / 10) * 10
-            if filtered_df.at[index, "new_price"] < min_limit:
-                filtered_df.at[index, "new_price"] = min_limit
-                price_log.append(
-                    f"Adjusted new_price to not be below middleprice + 30%: {min_limit}"
-                )
-
-        # Записываем лог в колонку price_log
-        filtered_df.at[index, "price_log"] = "\n".join(price_log)
-
-    # Вычисляем base_percent в конце, после всех корректировок new_price
-    mask = filtered_df["delprice"].notna() & filtered_df["new_price"].notna()
-    filtered_df.loc[mask, "base_percent"] = (
-        (filtered_df.loc[mask, "new_price"] - filtered_df.loc[mask, "delprice"])
-        / filtered_df.loc[mask, "delprice"]
+    # 6) Пересчёт base_percent
+    valid = filtered_df["delprice"].notna() & filtered_df["new_price"].notna()
+    filtered_df.loc[valid, "base_percent"] = (
+        (filtered_df.loc[valid, "new_price"] - filtered_df.loc[valid, "delprice"])
+        / filtered_df.loc[valid, "delprice"]
     ) * 100
 
     return filtered_df
 
 
+
 def adjust_prices_without_delprice(filtered_df):
     """
-    Функция корректирует позиции, у которых нет delprice и delsklad, но есть median_price,
-    так чтобы new_price не превышал определенные ограничения, основанные на tsenazakup (округлено до 10 рублей вверх).
-    Также корректируем new_price, если оно меньше 65% от медианной цены по каждому type_detail.
-
-    Parameters:
-    filtered_df (pd.DataFrame): Основной датафрейм с информацией о позициях.
-
-    Returns:
-    pd.DataFrame: Обновленный датафрейм с откорректированными ценами.
+    Корректирует позиции без delprice и delsklad, но с median_price и new_price:
+    1) Ограничивает new_price сверху на основе tsenazakup и коэффициентов:
+       • tsenazakup ≤ 1000       → ×3.0
+       • 1000 < tsenazakup ≤ 2000→ ×2.5
+       • 2000 < tsenazakup ≤ 5000→ ×2.2
+       • 5000 < tsenazakup ≤ 10000→ ×2.0
+       • tsenazakup > 10000      → ×1.8
+       Результат округляется вверх до 10 руб.
+    2) Ограничивает new_price снизу на 55% от медианы new_price по каждому type_detail
+       (округление вверх до 10 руб).
+    Возвращает копию filtered_df с изменёнными new_price.
     """
-    # Копируем датафрейм, чтобы избежать предупреждений SettingWithCopyWarning
-    filtered_df = filtered_df.copy()
+    df = filtered_df.copy()
 
-    # Фильтруем позиции, у которых нет delprice и delsklad, но есть median_price
-    condition = (
-        filtered_df["delprice"].isna()
-        & filtered_df["delsklad"].isna()
-        & filtered_df["median_price"].notna()
-        & filtered_df["new_price"].notna()
+    # 1) Отбираем нужные строки
+    mask = (
+        df["delprice"].isna()
+        & df["delsklad"].isna()
+        & df["median_price"].notna()
+        & df["new_price"].notna()
     )
 
-    # Отбираем строки, соответствующие условию
-    positions_to_adjust = filtered_df[condition]
+    # 2) Вычисляем верхний порог max_price (индексы уже соответствуют mask)
+    tsu = df.loc[mask, "tsenazakup"]
+    bins = [0, 1000, 2000, 5000, 10000, np.inf]
+    factors = [3.0, 2.5, 2.2, 2.0, 1.8]
+    factor_series = pd.cut(tsu, bins=bins, labels=factors, right=True).astype(float)
+    max_price = np.ceil((tsu * factor_series) / 10) * 10
 
-    # Применяем корректировку на основе tsenazakup
-    for idx, row in positions_to_adjust.iterrows():
-        tsenazakup = row["tsenazakup"]
-        if not pd.isna(tsenazakup) and tsenazakup > 0:
-            # Устанавливаем max_price в зависимости от значения tsenazakup
-            if tsenazakup <= 1000:
-                max_price = tsenazakup * 3.0
-            elif 1000 < tsenazakup <= 2000:
-                max_price = tsenazakup * 2.5
-            elif 2000 < tsenazakup <= 5000:
-                max_price = tsenazakup * 2.2
-            elif 5000 < tsenazakup <= 10000:
-                max_price = tsenazakup * 2.0
-            else:  # tsenazakup > 10000
-                max_price = tsenazakup * 1.8
+    # 3) Вычисляем нижний порог min_allowed (для всех строк)
+    median_by_type = df.groupby("type_detail")["new_price"].transform("median")
+    min_allowed = np.ceil(median_by_type * 0.55 / 10) * 10
 
-            # Округляем до 10 рублей вверх
-            max_price_rounded = np.ceil(max_price / 10) * 10
-
-            # Если new_price превышает max_price, корректируем его
-            if row["new_price"] > max_price_rounded:
-                filtered_df.loc[idx, "new_price"] = max_price_rounded
-
-    # Вычисляем медианную цену по каждому type_detail
-    median_type_prices = (
-        filtered_df.groupby("type_detail")["new_price"].median().to_dict()
+    # 4) Для строк mask сразу применяем clip по заранее отсечённым Series
+    #    .loc[mask] у max_price и min_allowed даст Series с точно такими же индексами,
+    #    как df.loc[mask, "new_price"]
+    df.loc[mask, "new_price"] = df.loc[mask, "new_price"].clip(
+        lower=min_allowed.loc[mask],
+        upper=max_price
     )
 
-    # Корректируем new_price на основе медианной цены по type_detail
-    for idx, row in positions_to_adjust.iterrows():
-        type_detail = row["type_detail"]
-        median_type_price = median_type_prices.get(type_detail, None)
+    return df
 
-        if median_type_price:
-            min_allowed_price = np.ceil(median_type_price * 0.55 / 10) * 10
 
-            # Если new_price меньше 65% от медианной цены, корректируем его
-            if row["new_price"] < min_allowed_price:
-                filtered_df.loc[idx, "new_price"] = min_allowed_price
 
-    return filtered_df

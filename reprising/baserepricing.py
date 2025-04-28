@@ -31,7 +31,7 @@ print("Базовая наценка от api")
 # filtered.to_csv("filtered_not_api_df.csv")
 # Базовая наценка от api
 df = calculate_new_prices_for_api(filtered, salespivot, suppliespivot, base_percent=1.57, reduced_base_percent=1.4)
-# df.to_csv("filtered_df_api.csv")
+#df.to_csv("filtered_df_api.csv")
 
 
 # print("adjust_prices_by_class")

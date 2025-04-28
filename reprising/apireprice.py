@@ -3,298 +3,153 @@ import pandas as pd
 from datetime import datetime
 
 
-def calculate_new_prices_for_api(
-    filtered_df, salespivot, suppliespivot, base_percent=1.6, reduced_base_percent=1.45
+def preprocess_data(
+    filtered_df: pd.DataFrame,
+    salespivot: pd.DataFrame,
+    suppliespivot: pd.DataFrame,
 ):
-    # Получаем текущую дату
+    """
+    1) Копирует входные DF и сохраняет текущее время в current_date
+    2) Приводит колонки 'data' и 'datasozdanija' в filtered_df к datetime
+    3) Приводит 'year_month' в salespivot и suppliespivot к datetime
+    4) Формирует маску condition_api для строк с 'api' в 'delsklad'
+    """
     current_date = datetime.now()
 
-    # Фильтруем строки, где sklad содержит "api"
-    condition_api = (
-        (
-            filtered_df["delsklad"].str.contains("api", case=False, na=False)
-        )  # Включаем только delsklad с "api"
-        & filtered_df["delprice"].notna()  # delprice не пустое
-        & (filtered_df["delprice"] > 0)  # delprice положительное
+    filtered_df = filtered_df.copy()
+    salespivot = salespivot.copy()
+    suppliespivot = suppliespivot.copy()
+
+    filtered_df["data"] = pd.to_datetime(
+        filtered_df["data"], format="%Y-%m-%d", errors="coerce"
+    )
+    filtered_df["datasozdanija"] = pd.to_datetime(
+        filtered_df["datasozdanija"], format="%Y-%m-%d", errors="coerce"
     )
 
-    # Фильтруем строки, где sklad не содержит "api"
-    condition_non_api = ~filtered_df["delsklad"].str.contains(
-        "api", case=False, na=False
+    salespivot["year_month"] = pd.to_datetime(
+        salespivot["year_month"], format="%Y-%m", errors="coerce"
     )
-
-    # Присваиваем переменные для удобства работы
-    tsenazakup = filtered_df.loc[condition_api, "tsenazakup"]
-    delprice = filtered_df.loc[condition_api, "delprice"]
-    middleprice = filtered_df.loc[condition_api, "middleprice"]
-    medianprice = filtered_df.loc[condition_api, "median_price"]
-    maxprice = filtered_df.loc[condition_api, "maxprice"]
-    abc = filtered_df.loc[condition_api, "abc"]
-    xyz = filtered_df.loc[condition_api, "xyz"]
-    tsenarozn = filtered_df.loc[condition_api, "tsenarozn"]
-    data = pd.to_datetime(filtered_df.loc[condition_api, "data"], format="%Y-%m-%d")
-    datasozdanija = pd.to_datetime(
-        filtered_df.loc[condition_api, "datasozdanija"],
-        format="%Y-%m-%d",
-        errors="coerce",
-    )
-
-    # Получаем даты из salespivot и suppliespivot
-    salespivot["year_month"] = pd.to_datetime(salespivot["year_month"], format="%Y-%m")
     suppliespivot["year_month"] = pd.to_datetime(
-        suppliespivot["year_month"], format="%Y-%m"
+        suppliespivot["year_month"], format="%Y-%m", errors="coerce"
     )
 
-    # Проверяем, были ли продажи или покупки за последние 24 месяца
-    def check_sales_and_supplies_last_24_months(kod):
-        last_24_months = current_date - pd.DateOffset(months=24)
-        sales_data = salespivot[
-            (salespivot["kod"] == kod) & (salespivot["year_month"] >= last_24_months)
-        ]
-        supplies_data = suppliespivot[
-            (suppliespivot["kod"] == kod)
-            & (suppliespivot["year_month"] >= last_24_months)
-        ]
-        return (
-            not sales_data.empty or not supplies_data.empty
-        )  # True если были продажи или покупки
-
-    # Функция проверки, были ли продажи за последние 12 месяцев в не более чем 1 месяце
-    def sales_in_last_12_months(kod):
-        last_12_months = current_date - pd.DateOffset(months=12)
-        sales_data = salespivot[
-            (salespivot["kod"] == kod) & (salespivot["year_month"] >= last_12_months)
-        ]
-        # Проверяем, если данные пусты или последняя дата продажи старше 12 месяцев
-        if sales_data.empty or sales_data["year_month"].max() < last_12_months:
-            return True  # Нет продаж за последние 12 месяцев или последняя продажа была больше 12 месяцев назад
-        return len(sales_data) <= 1  # True если продажи были в не более чем 1 месяце
-
-    # Применяем логику уменьшения наценки
-    def get_base_percent(row):
-        kod = row["kod"]
-        if not check_sales_and_supplies_last_24_months(kod) and (
-            pd.isna(row["datasozdanija"])
-            or (current_date - row["datasozdanija"]).days > 730
-        ):
-            return reduced_base_percent
-        return base_percent
-
-    # Вычисляем base_percent для каждой строки
-    filtered_df.loc[condition_api, "base_percent"] = filtered_df.loc[
-        condition_api
-    ].apply(get_base_percent, axis=1)
-    # Добавим проверку для строки с kod = 'ЦБ023035'
-    condition_central_bank = filtered_df["kod"] == "ЦБ023035"
-
-    # Выводим расчетный base_percent для строки с kod = 'ЦБ023035'
-    #print(f"Расчетный base_percent для строки с kod = 'ЦБ023035': {filtered_df.loc[condition_central_bank, 'base_percent']}")
-    
-
-    # Выводим расчетный base_percent для строки с kod = 'ЦБ023035'
-    #print(f"Расчетный new_price для строки с kod = 'ЦБ023035': {filtered_df.loc[condition_central_bank, 'new_price']}")
-    
-    # Условие по delprice
-    new_price = np.select(
-        [delprice <= 200, delprice <= 300, delprice >= 10000],
-        [
-            np.ceil(delprice * 1.8 / 10) * 10,
-            np.ceil(delprice * 1.65 / 10) * 10,
-            np.ceil(delprice * 1.35 / 10) * 10,
-        ],
-        default=np.nan,  # Все, что не попадает под условия, пока NaN
+    condition_api = (
+        filtered_df["delsklad"].str.contains("api", case=False, na=False)
+        & filtered_df["delprice"].notna()
+        & (filtered_df["delprice"] > 0)
     )
 
-    # Условие на дату, если прошло менее 14 дней — новая цена равна tsenarozn
-    recent_mask = (current_date - data).dt.days < 14
-    filtered_df.loc[condition_api & recent_mask, "new_price"] = tsenarozn
+    return filtered_df, salespivot, suppliespivot, condition_api, current_date
 
-    
 
-    # Для всех остальных строк, используем base_percent
-    nan_mask = filtered_df.loc[condition_api, "new_price"].isna()
-    filtered_df.loc[condition_api & nan_mask, "new_price"] = (
-        np.ceil(
-            delprice[nan_mask]
-            * filtered_df.loc[condition_api & nan_mask, "base_percent"]
-            / 10
-        )
-        * 10
+def calculate_api_repricing(
+    filtered_df: pd.DataFrame,
+    condition_api: pd.Series,
+    salespivot: pd.DataFrame,
+    suppliespivot: pd.DataFrame,
+    current_date: datetime,
+    base_percent: float = 1.6,
+    reduced_base_percent: float = 1.45,
+):
+    """
+    Обновляет new_price для API-товаров:
+      1) Жёсткие диапазоны delprice
+      2) Для 300<delprice<10000: reduced_base_percent при отсутствии активности
+         за 24 мес. И старой/пустой дате создания, иначе base_percent
+      3) recent <14дн → tsenarozn
+      4) cap по median_price*1.8 для <60дн
+      5) общий cap по median_price*2.0
+      6) минимум по tsenarozn*1.1, middleprice*1.3, maxprice*1.1
+    """
+    def has_activity_last_24_months(kod: str) -> bool:
+        cutoff = current_date - pd.DateOffset(months=24)
+        sold = salespivot[(salespivot["kod"] == kod) & (salespivot["year_month"] >= cutoff)]
+        bought = suppliespivot[(suppliespivot["kod"] == kod) & (suppliespivot["year_month"] >= cutoff)]
+        return not sold.empty or not bought.empty
+
+    df_api = filtered_df.loc[condition_api].copy()
+    dp = df_api["delprice"]
+
+    low   = dp <= 200
+    mid   = (dp > 200) & (dp <= 300)
+    high  = dp >= 10000
+    other = ~(low | mid | high)
+
+    new_price = pd.Series(index=df_api.index, dtype=float)
+    new_price[low]  = np.ceil(dp[low]  * 1.8  / 10) * 10
+    new_price[mid]  = np.ceil(dp[mid]  * 1.65 / 10) * 10
+    new_price[high] = np.ceil(dp[high] * 1.35 / 10) * 10
+
+    def pick_pct(row):
+        no_act = not has_activity_last_24_months(row["kod"])
+        old = pd.isna(row["datasozdanija"]) or (current_date - row["datasozdanija"]).days > 730
+        return reduced_base_percent if (no_act and old) else base_percent
+
+    pcts = df_api.loc[other].apply(pick_pct, axis=1)
+    new_price[other] = np.ceil(dp[other] * pcts / 10) * 10
+
+    filtered_df.loc[condition_api, "new_price"] = new_price
+
+    # 1) recent <14 дней → tsenarozn
+    recent_mask = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 14)
+    idx14 = filtered_df.index[condition_api & recent_mask]
+    filtered_df.loc[idx14, "new_price"] = filtered_df.loc[idx14, "tsenarozn"]
+
+    # 2) cap по median_price*1.8 для <60 дней
+    mask60 = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 60)
+    med_ok = filtered_df["median_price"].notna()
+    idx60 = filtered_df.index[condition_api & mask60 & med_ok]
+    cap60 = np.ceil(filtered_df.loc[idx60, "median_price"] * 1.8 / 10) * 10
+    filtered_df.loc[idx60, "new_price"] = np.minimum(filtered_df.loc[idx60, "new_price"], cap60)
+
+    # 3) общий cap по median_price*2.0
+    idx_med = filtered_df.index[condition_api & med_ok]
+    cap2 = np.ceil(filtered_df.loc[idx_med, "median_price"] * 2.0 / 10) * 10
+    filtered_df.loc[idx_med, "new_price"] = np.minimum(filtered_df.loc[idx_med, "new_price"], cap2)
+
+    # 4) минимум по tsenarozn*1.1, middleprice*1.3, maxprice*1.1
+    ts = filtered_df.loc[condition_api, "tsenarozn"].fillna(0)
+    mp = filtered_df.loc[condition_api, "middleprice"].fillna(0)
+    mx = filtered_df.loc[condition_api, "maxprice"].fillna(0)
+
+    min_ts = np.ceil(ts * 1.1 / 10) * 10
+    min_mp = np.ceil(mp * 1.3 / 10) * 10
+    min_mx = np.ceil(mx * 1.1 / 10) * 10
+
+    final = filtered_df.loc[condition_api, "new_price"]
+    final = np.maximum(final, min_ts)
+    final = np.maximum(final, min_mp)
+    final = np.maximum(final, min_mx)
+    filtered_df.loc[condition_api, "new_price"] = final
+
+    return filtered_df
+
+
+def calculate_new_prices_for_api(
+    filtered_df: pd.DataFrame,
+    salespivot: pd.DataFrame,
+    suppliespivot: pd.DataFrame,
+    base_percent: float = 1.6,
+    reduced_base_percent: float = 1.45,
+):
+    """
+    Возвращает тот же filtered_df, где обновлены new_price
+    только для строк с 'api' в 'delsklad'.
+    """
+    filtered_df, salespivot, suppliespivot, condition_api, current_date = preprocess_data(
+        filtered_df, salespivot, suppliespivot
     )
 
-    # Проверяем маски last_60_days_mask и valid_median_mask
-    last_60_days_mask = (current_date - data).dt.days < 60
-    valid_median_mask = medianprice.notna()
-
-    # Отладочный вывод для проверки масок
-    #print("Проверка для строки с kod = 'ЦБ023035':")
-    #condition_central_bank = filtered_df["kod"] == "ЦБ023035"
-    #print("Фильтр last_60_days_mask для строки 'ЦБ023035':")
-    #print(last_60_days_mask[condition_central_bank])
-    #print("Фильтр valid_median_mask для строки 'ЦБ023035':")
-    #print(valid_median_mask[condition_central_bank])
-
-    # Выводим промежуточные значения для проверки
-    #print("Значения для строки с kod = 'ЦБ023035' перед обновлением new_price:")
-    #print(filtered_df.loc[condition_central_bank, ["kod", "delprice", "new_price", "median_price"]])
-
-    # Проверяем, если new_price больше чем medianprice * 2.2, округленное вверх до 10, обновляем
-    filtered_df.loc[
-        condition_api & last_60_days_mask & valid_median_mask, "new_price"
-    ] = filtered_df.loc[
-        condition_api & last_60_days_mask & valid_median_mask
-    ].apply(
-        lambda row: np.minimum(
-            row["new_price"],
-            np.ceil(row["median_price"] * 2.2 / 10) * 10
-        )
-        if row["new_price"] > np.ceil(row["median_price"] * 2.2 / 10) * 10
-        else row["new_price"],
-        axis=1
+    # Обновляем new_price только внутри calculate_api_repricing
+    filtered_df = calculate_api_repricing(
+        filtered_df,
+        condition_api,
+        salespivot,
+        suppliespivot,
+        current_date,
+        base_percent,
+        reduced_base_percent,
     )
 
-    # Выводим результат для строки с kod = 'ЦБ023035' после обновления
-    #condition_central_bank = filtered_df["kod"] == "ЦБ023035"
-    #print(filtered_df.loc[condition_central_bank, ["kod", "delprice", "new_price", "median_price"]])
-
-
-    #filtered_df.to_excel('filtered_df.xlsx', index=False)
-
-    # Проверка условий abc, xyz и продаж/покупок за последние 2 года
-    def check_sales_only_and_no_purchases(row):
-        kod = row["kod"]
-        last_2_years = current_date - pd.DateOffset(years=2)
-        sales_data = salespivot[
-            (salespivot["kod"] == kod) & (salespivot["year_month"] >= last_2_years)
-        ]
-        supplies_data = suppliespivot[
-            (suppliespivot["kod"] == kod)
-            & (suppliespivot["year_month"] >= last_2_years)
-        ]
-        return not sales_data.empty and supplies_data.empty
-
-    special_condition = (
-        (abc != "A")
-        & (abc != "A1")
-        & (xyz == "Z")
-        & filtered_df.loc[condition_api].apply(
-            check_sales_only_and_no_purchases, axis=1
-        )
-    )
-
-    # Применяем ограничение на median_price * 1.4, если выполняются условия
-    filtered_df.loc[condition_api & special_condition, "new_price"] = np.minimum(
-        new_price, np.ceil(medianprice * 1.4 / 10) * 10
-    )
-
-    # Проверка: если abc не C, не null и xyz равен 'X1' или 'X', новая цена не меньше delprice * 1.3
-    abc_xyz_condition = (abc.notna()) & (abc != "C") & (xyz.isin(["X1", "X"]))
-    filtered_df.loc[condition_api & abc_xyz_condition, "new_price"] = np.maximum(
-        filtered_df.loc[condition_api & abc_xyz_condition, "new_price"],
-        np.ceil(delprice * 1.3 / 10) * 10,
-    )
-
-    # Проверка на среднюю цену группы товаров (type_detail, proizvoditel) перед проверкой maxprice и middleprice
-    group_means = (
-        filtered_df.loc[condition_non_api]
-        .groupby(["type_detail", "proizvoditel"])["new_price"]
-        .mean()
-    )
-
-    # Сравниваем с товарами, где sklad содержит "api" и которые не продавались в последние 12 месяцев или продавались в 1 месяц
-    for index, row in filtered_df.loc[condition_api].iterrows():
-        kod = row["kod"]
-        if sales_in_last_12_months(kod):
-            group_key = (row["type_detail"], row["proizvoditel"])
-            if group_key in group_means:
-                group_mean_price = group_means[group_key]
-                if row["new_price"] > group_mean_price * 1.2:
-                    # Снижаем new_price до средней цены + 10%
-                    filtered_df.at[index, "new_price"] = (
-                        np.ceil(group_mean_price * 1.1 / 10) * 10
-                    )
-
-            # Проверка на минимальное значение +10% к delprice
-            min_delprice = np.ceil(delprice.at[index] * 1.1 / 10) * 10
-            if row["new_price"] < min_delprice:
-                filtered_df.at[index, "new_price"] = min_delprice
-
-            # Проверка на минимальное значение +25% к medianprice
-            if not pd.isna(middleprice.at[index]):
-                min_middleprice = np.ceil(middleprice.at[index] * 1.25 / 10) * 10
-                if row["new_price"] < min_middleprice:
-                    filtered_df.at[index, "new_price"] = min_middleprice
-
-    # Проверка: если delprice и new_price отсутствуют, но есть median_price
-    missing_price_condition = (
-        filtered_df["delprice"].isna()
-        & filtered_df["new_price"].isna()
-        & filtered_df["median_price"].notna()
-    )
-    for index, row in filtered_df.loc[missing_price_condition].iterrows():
-        price = row["median_price"]
-        if price <= 200:
-            new_price = np.ceil(price * 2.2 / 10) * 10
-        elif price <= 300:
-            new_price = np.ceil(price * 2.0 / 10) * 10
-        elif price >= 10000:
-            new_price = np.ceil(price * 1.5 / 10) * 10
-        else:
-            new_price = np.ceil(price * 1.8 / 10) * 10
-
-        # Проверка на tsenarozn
-        if row["tsenarozn"] > new_price:
-            new_price = row["tsenarozn"]
-
-        filtered_df.at[index, "new_price"] = new_price
-
-    # Дополнительная проверка на наценку в зависимости от delprice
-    # Если delprice <= 200, то наценка должна быть не меньше 80%
-    filtered_df.loc[condition_api & (delprice <= 200), "new_price"] = np.maximum(
-        filtered_df.loc[condition_api & (delprice <= 200), "new_price"],
-        np.ceil(delprice * 1.8 / 10) * 10,
-    )
-
-    # Если delprice >= 10000, то наценка должна быть не больше 35%
-    filtered_df.loc[condition_api & (delprice >= 10000), "new_price"] = np.minimum(
-        filtered_df.loc[condition_api & (delprice >= 10000), "new_price"],
-        np.ceil(delprice * 1.35 / 10) * 10,
-    )
-
-    
-    condition_tsenazakup = (
-        condition_api
-        & maxprice.notna()
-        & (filtered_df.loc[condition_api, "new_price"] < tsenazakup * 1.1)
-    )
-
-
-    # Применяем проверки только к строкам, где выполняется условие maxprice и middleprice
-    condition_maxprice = (
-        condition_api
-        & maxprice.notna()
-        & (filtered_df.loc[condition_api, "new_price"] < maxprice * 1.1)
-    )
-    condition_middleprice = (
-        condition_api
-        & middleprice.notna()
-        & (filtered_df.loc[condition_api, "new_price"] < middleprice * 1.3)
-    )
-
-    # Проверки на maxprice
-    filtered_df.loc[condition_maxprice, "new_price"] = (
-        np.ceil(maxprice[condition_maxprice] * 1.1 / 10) * 10
-    )
-
-    # Проверки на middleprice
-    filtered_df.loc[condition_middleprice, "new_price"] = (
-        np.ceil(middleprice[condition_middleprice] * 1.3 / 10) * 10
-    )
-
-        # Проверки на middleprice
-    filtered_df.loc[condition_tsenazakup, "new_price"] = (
-        np.ceil(tsenazakup[condition_tsenazakup] * 1.1 / 10) * 10
-    )
-
-    # Возвращаем обновленный filtered_df
     return filtered_df
