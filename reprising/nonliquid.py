@@ -84,7 +84,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         # 5.2) Определяем период и low_pct/high_pct
         if pd.isna(dt) or dt <= last_36:
             period    = "36+"
-            low_pct, high_pct = 0.7, 0.8
+            low_pct, high_pct = 0.5, 0.8
             boost     = has_sales_more_than_two(kod, last_36, now)
         elif dt <= last_24:
             period    = "24-36"
