@@ -115,14 +115,14 @@ def not_api_calculate_new_prices(
     condition_middleprice = (
         condition
         & middleprice.notna()
-        & (filtered_df.loc[condition, "new_price"] < middleprice * 1.3)
+        & (filtered_df.loc[condition, "new_price"] < middleprice * 1.4)
     )
 
     filtered_df.loc[condition_maxprice, "new_price"] = (
         np.ceil(maxprice[condition_maxprice] * 1.2 / 10) * 10
     )
     filtered_df.loc[condition_middleprice, "new_price"] = (
-        np.ceil(middleprice[condition_middleprice] * 1.3 / 10) * 10
+        np.ceil(middleprice[condition_middleprice] * 1.4 / 10) * 10
     )
 
     return filtered_df
