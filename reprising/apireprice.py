@@ -72,13 +72,13 @@ def calculate_api_repricing(
     dp = df_api["delprice"]
 
     low   = dp <= 200
-    mid   = (dp > 200) & (dp <= 300)
+    mid   = (dp > 200) & (dp <= 1500)
     high  = dp >= 10000
     other = ~(low | mid | high)
 
     new_price = pd.Series(index=df_api.index, dtype=float)
     new_price[low]  = np.ceil(dp[low]  * 1.8  / 10) * 10
-    new_price[mid]  = np.ceil(dp[mid]  * 1.65 / 10) * 10
+    new_price[mid]  = np.ceil(dp[mid]  * 1.60 / 10) * 10
     new_price[high] = np.ceil(dp[high] * 1.35 / 10) * 10
     
 

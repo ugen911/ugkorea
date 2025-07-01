@@ -62,7 +62,7 @@ def not_api_calculate_new_prices(
         [
             delprice <= 100,
             delprice <= 300,
-            delprice <= 500,
+            delprice <= 1500,
             delprice >= 20000,
             delprice >= 10000,
         ],
