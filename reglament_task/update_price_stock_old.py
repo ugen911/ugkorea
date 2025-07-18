@@ -104,6 +104,20 @@ def generate_analog_groups(data):
 def prepare_analog_data(file_path):
     data = load_data(file_path)
     if data is not None:
+        # Удаляем строки, где одна из ячеек пуста или содержит только непечатные символы
+        def is_invalid(value):
+            if pd.isna(value):
+                return True
+            value_str = str(value).strip()
+            if not value_str:
+                return True
+            if all(char not in string.printable for char in value_str):
+                return True
+            return False
+
+        # Предполагаем, что у data две колонки
+        data = data[~(data.iloc[:, 0].apply(is_invalid) | data.iloc[:, 1].apply(is_invalid))]
+
         group_ids = generate_analog_groups(data)
         analog_df = pd.DataFrame(list(group_ids.items()), columns=['kod_1s', 'gruppa_analogov'])
         analog_df.drop_duplicates(subset=['kod_1s'], inplace=True)
