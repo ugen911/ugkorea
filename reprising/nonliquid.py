@@ -27,9 +27,23 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
     filtered_df["data"] = pd.to_datetime(
         filtered_df["data"], format="%d.%m.%Y %H:%M", errors="coerce"
     )
+    # Обработка datasozdanija с подстановкой по умолчанию 01.01.2022
+    datasozd = filtered_df.get("datasozdanija", pd.Series(index=filtered_df.index))
+
+    # Заменяем пустые строки и NaN на 01.01.2022
+    datasozd = datasozd.astype(str).str.strip()
+    datasozd = datasozd.replace({"": "01.01.2022", "NaT": "01.01.2022", "nan": "01.01.2022"})
+
+    # Преобразуем в даты по формату DD.MM.YYYY
     filtered_df["datasozdanija"] = pd.to_datetime(
-        filtered_df.get("datasozdanija", None), errors="coerce"
+        datasozd,
+        format="%d.%m.%Y",
+        errors="coerce"
     )
+ 
+    # Подстраховка — если остались NaT, ставим 01.01.2022
+    filtered_df["datasozdanija"] = filtered_df["datasozdanija"].fillna(pd.Timestamp("2022-01-01"))
+
     filtered_df["last_purchase"] = filtered_df["data"].fillna(
         filtered_df["datasozdanija"]
     )

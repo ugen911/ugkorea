@@ -45,6 +45,7 @@ df_new = adjust_prices_by_class(filtered_df=df, salespivot=salespivot, suppliesp
 # - нет поступлений 24 месяца и больше и продажи какие  распиши вилки
 print('nonliquid')
 res = adjust_new_price_for_non_liquid(df_new, salespivot)
+#df_new.to_csv("df_new_adjust_new_price_for_non_liquid.csv")
 df_1 = adjust_prices_without_delprice(res)
 gh = adjust_new_price_by_peer_median(df_1)
 # df_1.to_csv("filtered_non_liquid__without_delprice_df.csv")
