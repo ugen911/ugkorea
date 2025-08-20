@@ -115,9 +115,9 @@ def calculate_api_repricing(
     mp = filtered_df.loc[condition_api, "middleprice"].fillna(0)
     mx = filtered_df.loc[condition_api, "maxprice"].fillna(0)
 
-    min_ts = np.ceil(ts * 1.2 / 10) * 10
+    min_ts = np.ceil(ts * 1.5 / 10) * 10
     min_mp = np.ceil(mp * 1.4 / 10) * 10
-    min_mx = np.ceil(mx * 1.2 / 10) * 10
+    min_mx = np.ceil(mx * 1.3 / 10) * 10
 
     final = filtered_df.loc[condition_api, "new_price"]
     final = np.maximum(final, min_ts)

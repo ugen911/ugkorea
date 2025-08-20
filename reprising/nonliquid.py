@@ -158,10 +158,10 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
 
         # 5.8) Внешние пороги по maxprice и middleprice
         if pd.notna(row["maxprice"]):
-            floor_max = np.ceil((row["maxprice"] * 1.1) / 10) * 10
+            floor_max = np.ceil((row["maxprice"] * 1.3) / 10) * 10
             new_price = max(new_price, floor_max)
         if pd.notna(row["middleprice"]):
-            floor_mid = np.ceil((row["middleprice"] * 1.45) / 10) * 10
+            floor_mid = np.ceil((row["middleprice"] * 1.5) / 10) * 10
             new_price = max(new_price, floor_mid)
 
         # Записываем результат
@@ -281,10 +281,10 @@ def adjust_new_price_by_peer_median(filtered_df):
 
             # 4.3) Внешние пороги по maxprice и middleprice (как в оригинале)
             if pd.notna(row["maxprice"]):
-                floor_max = np.ceil((row["maxprice"] * 1.1) / 10) * 10
+                floor_max = np.ceil((row["maxprice"] * 1.3) / 10) * 10
                 new_price = max(new_price, floor_max)
             if pd.notna(row["middleprice"]):
-                floor_mid = np.ceil((row["middleprice"] * 1.3) / 10) * 10
+                floor_mid = np.ceil((row["middleprice"] * 1.5) / 10) * 10
                 new_price = max(new_price, floor_mid)
 
             filtered_df.at[idx, "new_price"] = new_price
