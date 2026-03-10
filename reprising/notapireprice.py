@@ -67,11 +67,11 @@ def not_api_calculate_new_prices(
             delprice >= 10000,
         ],
         [
-            np.ceil(delprice * 2.0 / 10) * 10,
-            np.ceil(delprice * 1.7 / 10) * 10,
-            np.ceil(delprice * 1.6 / 10) * 10,
-            np.ceil(delprice * 1.25 / 10) * 10,
+            np.ceil(delprice * 2.1 / 10) * 10,
+            np.ceil(delprice * 1.75 / 10) * 10,
+            np.ceil(delprice * 1.65 / 10) * 10,
             np.ceil(delprice * 1.3 / 10) * 10,
+            np.ceil(delprice * 1.35 / 10) * 10,
         ],
         default=filtered_df.loc[condition, "new_price"],
     )
@@ -81,7 +81,7 @@ def not_api_calculate_new_prices(
     mask_naimenovanie = naimenovanie.str.startswith(
         ("Тормозная жид", "Предохранитель", "Шайба", "Щетка", "Антифриз", "Хомут")
     )
-    corrected_price = np.ceil(delprice[mask_naimenovanie] * 1.6 / 10) * 10
+    corrected_price = np.ceil(delprice[mask_naimenovanie] * 1.7 / 10) * 10
     filtered_df.loc[condition & mask_naimenovanie, "new_price"] = np.where(
         filtered_df.loc[condition & mask_naimenovanie, "new_price"] < corrected_price,
         corrected_price,
