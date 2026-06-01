@@ -49,8 +49,8 @@ def calculate_api_repricing(
     salespivot: pd.DataFrame,
     suppliespivot: pd.DataFrame,
     current_date: datetime,
-    base_percent: float = 1.6,
-    reduced_base_percent: float = 1.45,
+    base_percent: float = 1.65,
+    reduced_base_percent: float = 1.5,
 ):
     """
     Обновляет new_price для API-товаров:
@@ -77,9 +77,9 @@ def calculate_api_repricing(
     other = ~(low | mid | high)
 
     new_price = pd.Series(index=df_api.index, dtype=float)
-    new_price[low]  = np.ceil(dp[low]  * 1.85  / 10) * 10
-    new_price[mid]  = np.ceil(dp[mid]  * 1.65 / 10) * 10
-    new_price[high] = np.ceil(dp[high] * 1.4 / 10) * 10
+    new_price[low]  = np.ceil(dp[low]  * 1.9  / 10) * 10
+    new_price[mid]  = np.ceil(dp[mid]  * 1.7 / 10) * 10
+    new_price[high] = np.ceil(dp[high] * 1.45 / 10) * 10
     
 
     def pick_pct(row):
@@ -115,9 +115,9 @@ def calculate_api_repricing(
     mp = filtered_df.loc[condition_api, "middleprice"].fillna(0)
     mx = filtered_df.loc[condition_api, "maxprice"].fillna(0)
 
-    min_ts = np.ceil(ts * 1.5 / 10) * 10
-    min_mp = np.ceil(mp * 1.4 / 10) * 10
-    min_mx = np.ceil(mx * 1.3 / 10) * 10
+    min_ts = np.ceil(ts * 1.55 / 10) * 10
+    min_mp = np.ceil(mp * 1.45 / 10) * 10
+    min_mx = np.ceil(mx * 1.35 / 10) * 10
 
     final = filtered_df.loc[condition_api, "new_price"]
     final = np.maximum(final, min_ts)

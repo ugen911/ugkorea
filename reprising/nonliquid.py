@@ -127,16 +127,16 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
 
         # 5.4) Универсальное нижнее ограничение по delprice
         if dp <= 300:
-            min_floor = dp * 1.4
+            min_floor = dp * 1.45
             low, high = max(low, min_floor), max(high, min_floor)
         elif dp <= 1000:
-            min_floor = dp * 1.2
+            min_floor = dp * 1.25
             low, high = max(low, min_floor), max(high, min_floor)
 
         # 5.5) Boost и cap
         if boost:
             high *= boost_factors[period]
-            high  = min(high, base_price * 1.5)
+            high  = min(high, base_price * 1.55)
 
         # 5.6) Первый clamp и округление
         new_price = clamp(orig, low, high)
@@ -158,10 +158,10 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
 
         # 5.8) Внешние пороги по maxprice и middleprice
         if pd.notna(row["maxprice"]):
-            floor_max = np.ceil((row["maxprice"] * 1.3) / 10) * 10
+            floor_max = np.ceil((row["maxprice"] * 1.35) / 10) * 10
             new_price = max(new_price, floor_max)
         if pd.notna(row["middleprice"]):
-            floor_mid = np.ceil((row["middleprice"] * 1.5) / 10) * 10
+            floor_mid = np.ceil((row["middleprice"] * 1.55) / 10) * 10
             new_price = max(new_price, floor_mid)
 
         # Записываем результат
