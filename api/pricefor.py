@@ -31,8 +31,21 @@ def get_final_df():
     # Оставляем только необходимые колонки
     final_df = merged_df[['kod', 'artikul', 'proizvoditel', 'osnsklad']]
 
-    # Фильтруем строки, где artikul содержит только латинские буквы и цифры
-    final_df = final_df[final_df['artikul'].apply(lambda x: bool(re.match(r'^[A-Za-z0-9]+$', x)))]
+    # ДЕБАГ: показываем строки, где artikul пустой или не строка
+    bad_rows = final_df[
+        final_df['artikul'].isna() |
+        ~final_df['artikul'].apply(lambda x: isinstance(x, str))
+    ]
+
+    if not bad_rows.empty:
+        print("Найдены проблемные строки с artikul:")
+        print(bad_rows.to_string())
+
+    # Безопасная фильтрация: только строки, где artikul есть и состоит из латиницы/цифр
+    final_df = final_df[
+        final_df['artikul'].notna()
+        & final_df['artikul'].astype(str).str.match(r'^[A-Za-z0-9]+$')
+    ]
 
     # Проверяем на наличие маленькой латинской буквы в конце артикула
     rows_to_add = []
