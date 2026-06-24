@@ -70,9 +70,9 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
             & (salespivot["year_month"] < end)
         ).sum() > 2
 
-    boost_factors = {"36+":1.2, "24-36":1.25, "18-24":1.37, "12-18":1.37}
-    avg_lowf      = {"36+":0.5,   "24-36":0.9,  "18-24":1.1, "12-18":0.7}
-    avg_upf       = {"36+":0.8,   "24-36":1.1,  "18-24":1.3, "12-18":1.0}
+    boost_factors = {"36+":1.7, "24-36":1.8, "18-24":1.85, "12-18":1.9}
+    avg_lowf      = {"36+":0.7,   "24-36":0.9,  "18-24":1.1, "12-18":0.8}
+    avg_upf       = {"36+":1.2,   "24-36":1.3,  "18-24":1.4, "12-18":1.2}
     
     def clamp(orig, low, high):
         return np.ceil(min(max(orig, low), high) / 10) * 10
@@ -100,7 +100,7 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
         # 5.2) Определяем период и low_pct/high_pct
         if pd.isna(dt) or dt <= last_36:
             period    = "36+"
-            low_pct, high_pct = 0.4, 0.5
+            low_pct, high_pct = 0.7, 0.8
             boost     = has_sales_more_than_two(kod, last_36, now)
         elif dt <= last_24:
             period    = "24-36"
@@ -127,10 +127,10 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
 
         # 5.4) Универсальное нижнее ограничение по delprice
         if dp <= 300:
-            min_floor = dp * 1.45
+            min_floor = dp * 1.55
             low, high = max(low, min_floor), max(high, min_floor)
         elif dp <= 1000:
-            min_floor = dp * 1.25
+            min_floor = dp * 1.50
             low, high = max(low, min_floor), max(high, min_floor)
 
         # 5.5) Boost и cap
@@ -158,10 +158,10 @@ def adjust_new_price_for_non_liquid(filtered_df, salespivot):
 
         # 5.8) Внешние пороги по maxprice и middleprice
         if pd.notna(row["maxprice"]):
-            floor_max = np.ceil((row["maxprice"] * 1.35) / 10) * 10
+            floor_max = np.ceil((row["maxprice"] * 1.55) / 10) * 10
             new_price = max(new_price, floor_max)
         if pd.notna(row["middleprice"]):
-            floor_mid = np.ceil((row["middleprice"] * 1.55) / 10) * 10
+            floor_mid = np.ceil((row["middleprice"] * 1.6) / 10) * 10
             new_price = max(new_price, floor_mid)
 
         # Записываем результат
@@ -189,7 +189,7 @@ def adjust_prices_without_delprice(filtered_df):
        • 5000 < tsenazakup ≤ 10000→ ×2.0
        • tsenazakup > 10000      → ×1.8
        Результат округляется вверх до 10 руб.
-    2) Ограничивает new_price снизу на 55% от медианы new_price по каждому type_detail
+    2) Ограничивает new_price снизу на 90% от медианы new_price по каждому type_detail
        (округление вверх до 10 руб).
     Возвращает копию filtered_df с изменёнными new_price.
     """
@@ -212,7 +212,7 @@ def adjust_prices_without_delprice(filtered_df):
 
     # 3) Вычисляем нижний порог min_allowed (для всех строк)
     median_by_type = df.groupby("type_detail")["new_price"].transform("median")
-    min_allowed = np.ceil(median_by_type * 0.55 / 10) * 10
+    min_allowed = np.ceil(median_by_type * 0.90 / 10) * 10
 
     # 4) Для строк mask сразу применяем clip по заранее отсечённым Series
     #    .loc[mask] у max_price и min_allowed даст Series с точно такими же индексами,
@@ -230,7 +230,7 @@ def adjust_new_price_by_peer_median(filtered_df):
     """
     Для товаров без delprice, without delsklad и median_price и с периодом «36+»
     Ограничивает их new_price по медиане new_price похожих товаров (type_detail + proizvoditel),
-    если таких товаров больше трёх, с коэффициентом ×1.5 и округлением до десятков,
+    если таких товаров больше трёх, с коэффициентом ×1.9 и округлением до десятков,
     затем применяет внешние пороги по maxprice и middleprice.
     """
     import numpy as np
@@ -276,15 +276,15 @@ def adjust_new_price_by_peer_median(filtered_df):
         # 4.2) Если таких больше трёх — берём медиану и ограничиваем
         if len(peers) > 3:
             median_peer = peers.median()
-            cap = np.ceil((median_peer * 1.3) / 10) * 10
+            cap = np.ceil((median_peer * 1.90) / 10) * 10
             new_price = min(orig, cap)
 
             # 4.3) Внешние пороги по maxprice и middleprice (как в оригинале)
             if pd.notna(row["maxprice"]):
-                floor_max = np.ceil((row["maxprice"] * 1.3) / 10) * 10
+                floor_max = np.ceil((row["maxprice"] * 1.55) / 10) * 10
                 new_price = max(new_price, floor_max)
             if pd.notna(row["middleprice"]):
-                floor_mid = np.ceil((row["middleprice"] * 1.5) / 10) * 10
+                floor_mid = np.ceil((row["middleprice"] * 1.6) / 10) * 10
                 new_price = max(new_price, floor_mid)
 
             filtered_df.at[idx, "new_price"] = new_price
