@@ -22,7 +22,7 @@ engine = get_db_engine()
 filtered_df, priceendmonth, salespivot, stockendmonth, suppliespivot, postuplenija = (
     prepare_filtered_data(engine)
 )
-
+#filtered_df.to_csv("filtered_df_api.csv")
 
 print("Пересчитываем цены для прайсов от поставщиков")
 # Пересчитываем цены для прайсов от поставщиков
@@ -77,7 +77,7 @@ k = filter_dataframe(df4, brand, text)
 
 # Убираем позиции из датафрейма которые не надо переоценивать
 f = exclude_kods_from_file(k)
-
+#f.to_excel("f.xlsx", index=False, freeze_panes=(1, 0))
 
 reglament_views = regtament_view(filtered_df=f)
 # regtament_views.to_excel("reglament_views.xlsx", index=False, freeze_panes=(1, 0))

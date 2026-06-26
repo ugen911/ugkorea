@@ -94,12 +94,12 @@ def calculate_api_repricing(
     
 
     # 1) recent <14 дней → tsenarozn
-    recent_mask = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 14)
+    recent_mask = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 3)
     idx14 = filtered_df.index[condition_api & recent_mask]
     filtered_df.loc[idx14, "new_price"] = filtered_df.loc[idx14, "tsenarozn"]
     
     # 2) cap по median_price*1.8 для <60 дней
-    mask60 = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 60)
+    mask60 = filtered_df["data"].notna() & ((current_date - filtered_df["data"]).dt.days < 14)
     med_ok = filtered_df["median_price"].notna()
     idx60 = filtered_df.index[condition_api & mask60 & med_ok]
     cap60 = np.ceil(filtered_df.loc[idx60, "median_price"] * 1.8 / 10) * 10
@@ -116,8 +116,8 @@ def calculate_api_repricing(
     mx = filtered_df.loc[condition_api, "maxprice"].fillna(0)
 
     min_ts = np.ceil(ts * 1.6 / 10) * 10
-    min_mp = np.ceil(mp * 1.45 / 10) * 10
-    min_mx = np.ceil(mx * 1.35 / 10) * 10
+    min_mp = np.ceil(mp * 1.55 / 10) * 10
+    min_mx = np.ceil(mx * 1.50 / 10) * 10
 
     final = filtered_df.loc[condition_api, "new_price"]
     final = np.maximum(final, min_ts)
