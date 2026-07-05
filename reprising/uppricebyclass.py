@@ -34,11 +34,10 @@ def adjust_prices_by_class(filtered_df, salespivot, suppliespivot):
     # 3) Вычисляем медиану tsenarozn по (type_detail, is_original) для групп с >=5 записей
     median_prices_by_class = (
         filtered_df.loc[
-            ~filtered_df[["new_price", "delprice", "median_price"]]
-            .isna()
-            .all(axis=1)
+            filtered_df["delprice"].notna()
+            & (filtered_df["delprice"] > 0)
         ]
-        .groupby(["type_detail", "is_original"])  
+        .groupby(["type_detail", "is_original"])
         .filter(lambda x: len(x) >= 5)
         .groupby(["type_detail", "is_original"])["tsenarozn"]
         .median()
