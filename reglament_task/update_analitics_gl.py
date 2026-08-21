@@ -18,13 +18,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_PARENT = PROJECT_ROOT.parent
 if str(PROJECT_PARENT) not in sys.path:
     sys.path.insert(0, str(PROJECT_PARENT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from ugkorea.db.database import get_db_engine
 
-from .one_c_receiver_runtime.contracts import OBSERVED_CONTRACTS, PRUNED_HEADERS_BY_NAME
+from reglament_task.one_c_receiver_runtime.contracts import (
+    OBSERVED_CONTRACTS,
+    PRUNED_HEADERS_BY_NAME,
+)
 
-DEFAULT_EXPORT_DIR = Path(
+DEFAULT_LOCAL_EXPORT_DIR = Path(
     r"D:\NAS\заказы\Евгений\Access\Табличные выгрузки1С"
+)
+DEFAULT_NETWORK_EXPORT_DIR = Path(
+    r"\\26.218.196.12\заказы\Евгений\Access\Табличные выгрузки1С"
 )
 LOG_PATH = PROJECT_ROOT / "data_upload_errors.log"
 # The 17 CSV files form one daily cohort.  This age is a fail-closed deadline
@@ -100,7 +108,11 @@ def to_snake_case(value: str) -> str:
 
 def export_directory() -> Path:
     configured = os.getenv("UGKOREA_ONE_C_EXPORT_DIR")
-    return Path(configured) if configured else DEFAULT_EXPORT_DIR
+    if configured:
+        return Path(configured)
+    if DEFAULT_LOCAL_EXPORT_DIR.is_dir():
+        return DEFAULT_LOCAL_EXPORT_DIR
+    return DEFAULT_NETWORK_EXPORT_DIR
 
 
 def table_name(file_name: str) -> str:
@@ -148,7 +160,12 @@ def prepare_exports(
         )
 
     prepared = []
-    for contract_name, file_name, expected_headers in SIMPLE_SNAPSHOT_CONTRACTS:
+    total_files = len(SIMPLE_SNAPSHOT_CONTRACTS)
+    for position, (contract_name, file_name, expected_headers) in enumerate(
+        SIMPLE_SNAPSHOT_CONTRACTS,
+        start=1,
+    ):
+        print(f"[Чтение {position}/{total_files}] {file_name}...", flush=True)
         file_path = source_dir / file_name
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -201,6 +218,11 @@ def prepare_exports(
                 raise ValueError(f"Required kod column is missing in {file_name}")
             data.set_index("kod", inplace=True)
         prepared.append((contract_name, destination, data, use_index))
+        print(
+            f"[Подготовлено {position}/{total_files}] {file_name}: "
+            f"{len(data.index)} строк -> таблица '{destination}'.",
+            flush=True,
+        )
 
     frames = {contract_name: data for contract_name, _, data, _ in prepared}
     work_refs = set(frames["service_order_works"]["ssylka"].dropna())
@@ -250,6 +272,12 @@ def update_exports(
     window_end: datetime,
 ) -> None:
     destinations = {name: destination for name, destination, _, _ in prepared}
+    source_files = {
+        contract_name: file_name
+        for contract_name, file_name, _ in SIMPLE_SNAPSHOT_CONTRACTS
+    }
+    total_tables = len(prepared)
+    print("Подготовка транзакции обновления таблиц...", flush=True)
     with engine.begin() as connection:
         for contract_name in sorted(SNAPSHOT_CONTRACTS):
             connection.execute(
@@ -284,18 +312,41 @@ def update_exports(
                 {"cutoff": cutoff, "window_end": window_end},
             )
 
-        for contract_name, destination, data, use_index in prepared:
+        for position, (contract_name, destination, data, use_index) in enumerate(
+            prepared,
+            start=1,
+        ):
+            file_name = source_files[contract_name]
+            print(
+                f"[Загрузка {position}/{total_tables}] {file_name} -> "
+                f"таблица '{destination}' ({len(data.index)} строк)...",
+                flush=True,
+            )
             data.to_sql(
                 destination,
                 connection,
                 if_exists="append",
                 index=use_index,
             )
+            print(
+                f"[Записано {position}/{total_tables}] Таблица '{destination}' "
+                "записана в текущую транзакцию.",
+                flush=True,
+            )
+
+    print(
+        f"Транзакция обновления {total_tables} таблиц успешно зафиксирована.",
+        flush=True,
+    )
 
 
 def main() -> int:
     engine = None
     try:
+        engine = get_db_engine()
+        if engine is None:
+            raise ConnectionError("Legacy database engine is unavailable")
+
         source_dir = export_directory()
         reference = datetime.now()
         cutoff, window_end = rolling_bounds(reference)
@@ -305,10 +356,6 @@ def main() -> int:
             window_end=window_end,
             reference=reference,
         )
-        engine = get_db_engine()
-        if engine is None:
-            raise ConnectionError("Legacy database engine is unavailable")
-
         update_exports(prepared, engine, cutoff=cutoff, window_end=window_end)
     except Exception as error:
         logging.exception("1C CSV rolling-window update failed")
