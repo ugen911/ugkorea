@@ -3,7 +3,7 @@ cd /d %~dp0
 call venv\Scripts\activate
 python -m reglament_task.update_analitics_gl
 if errorlevel 1 (
-    echo 1C CSV snapshot import failed. Downstream tasks were not started.
+    echo 1C CSV rolling-window import failed. Downstream tasks were not started.
     exit /b 1
 )
 echo Updated all date from analitic 1c.
