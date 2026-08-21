@@ -1,7 +1,11 @@
 @echo off
 cd /d %~dp0
 call venv\Scripts\activate
-python -m reglament_task.update_analitics_gl
+python -m reglament_task.update_analitics_gl %*
+if errorlevel 1 (
+    echo 1C manifest import rejected. Downstream tasks were not started.
+    exit /b 1
+)
 echo Updated all date from analitic 1c.
 python -m reglament_task.update_price_stock_old
 echo From old prices update.
