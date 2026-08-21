@@ -1,59 +1,145 @@
-"""Safe entrypoint for manifest-scoped 1C updates."""
+"""Replace legacy analytical tables from the fixed 1C CSV snapshot."""
 
 from __future__ import annotations
 
-import argparse
-import json
+import logging
 import os
+import sys
+import warnings
 from pathlib import Path
 
-from .one_c_receiver_runtime.receiver import ReceiverError, run_from_paths
+import pandas as pd
+from transliterate import translit
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_PARENT = PROJECT_ROOT.parent
+if str(PROJECT_PARENT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_PARENT))
+
+from ugkorea.db.database import get_db_engine
+
+from .one_c_receiver_runtime.contracts import OBSERVED_CONTRACTS, PRUNED_HEADERS_BY_NAME
+
+DEFAULT_EXPORT_DIR = Path(
+    r"D:\NAS\заказы\Евгений\Access\Табличные выгрузки1С"
+)
+LOG_PATH = PROJECT_ROOT / "data_upload_errors.log"
+SIMPLE_SNAPSHOT_CONTRACTS = tuple(
+    (
+        contract.file_name,
+        PRUNED_HEADERS_BY_NAME.get(contract.name, contract.headers),
+    )
+    for contract in OBSERVED_CONTRACTS
+)
+
+logging.basicConfig(
+    filename=LOG_PATH,
+    level=logging.INFO,
+    format="%(asctime)s:%(levelname)s:%(message)s",
+)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, default=os.getenv("UGKOREA_ONE_C_MANIFEST"))
-    parser.add_argument("--source", type=Path, default=os.getenv("UGKOREA_ONE_C_EXPORT_DIR"))
-    parser.add_argument("--database-url", default=os.getenv("UGKOREA_ONE_C_DATABASE_URL"))
-    args = parser.parse_args()
-    if args.manifest is None or args.source is None or not args.database_url:
-        parser.error(
-            "manifest, source and database URL must be supplied explicitly "
-            "by arguments or UGKOREA_ONE_C_* environment variables"
+def to_snake_case(value: str) -> str:
+    value = translit(value, "ru", reversed=True)
+    return (
+        value.lower()
+        .replace(" ", "_")
+        .replace(".", "_")
+        .replace('"', "")
+        .replace("'", "")
+        .replace(",", "")
+        .replace(";", "")
+        .replace("!", "")
+        .replace("?", "")
+    )
+
+
+def export_directory() -> Path:
+    configured = os.getenv("UGKOREA_ONE_C_EXPORT_DIR")
+    return Path(configured) if configured else DEFAULT_EXPORT_DIR
+
+
+def table_name(file_name: str) -> str:
+    stem = Path(file_name).stem.replace("Выгрузка_", "").replace("Выгрузка", "")
+    return to_snake_case(stem)
+
+
+def prepare_exports(source_dir: Path) -> list[tuple[str, pd.DataFrame, bool]]:
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"1C export directory does not exist: {source_dir}")
+
+    missing = [
+        file_name
+        for file_name, _ in SIMPLE_SNAPSHOT_CONTRACTS
+        if not (source_dir / file_name).is_file()
+    ]
+    if missing:
+        raise FileNotFoundError("Missing required 1C CSV files: " + ", ".join(missing))
+
+    prepared = []
+    for file_name, expected_headers in SIMPLE_SNAPSHOT_CONTRACTS:
+        file_path = source_dir / file_name
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            data = pd.read_csv(file_path, sep=";", on_bad_lines="warn")
+        for warning in caught:
+            logging.warning("CSV parser warning for %s: %s", file_name, warning.message)
+
+        source_headers = tuple(
+            str(column).lstrip("\ufeff").strip() for column in data.columns
         )
-    return args
+        if source_headers != expected_headers:
+            raise ValueError(
+                f"Unexpected header for {file_name}: "
+                f"expected {expected_headers!r}, got {source_headers!r}"
+            )
+        data.columns = [to_snake_case(column) for column in source_headers]
+        data = data.apply(
+            lambda column: column.map(
+                lambda value: value.strip() if isinstance(value, str) else value
+            )
+        )
+
+        for column in [name for name in data.columns if "data" in name]:
+            data[column] = pd.to_datetime(data[column], errors="coerce", dayfirst=True)
+
+        destination = table_name(file_name)
+        use_index = destination in {"nomenklaturaprimenjaemost", "nomenklatura"}
+        if use_index:
+            if "kod" not in data.columns:
+                raise ValueError(f"Required kod column is missing in {file_name}")
+            data.set_index("kod", inplace=True)
+        prepared.append((destination, data, use_index))
+    return prepared
 
 
 def main() -> int:
-    args = parse_args()
+    engine = None
     try:
-        result = run_from_paths(
-            database_url=args.database_url,
-            source_dir=args.source,
-            manifest_path=args.manifest,
-        )
-    except ReceiverError as error:
-        print(json.dumps({"status": "rejected", "error": str(error)}, ensure_ascii=False))
-        return 1
+        source_dir = export_directory()
+        prepared = prepare_exports(source_dir)
+        engine = get_db_engine()
+        if engine is None:
+            raise ConnectionError("Legacy database engine is unavailable")
+
+        with engine.begin() as connection:
+            for destination, data, use_index in prepared:
+                data.to_sql(
+                    destination,
+                    connection,
+                    if_exists="replace",
+                    index=use_index,
+                )
     except Exception as error:
-        print(
-            json.dumps(
-                {"status": "failed", "error_code": type(error).__name__},
-                ensure_ascii=False,
-            )
-        )
+        logging.exception("1C CSV snapshot replacement failed")
+        print(f"1C CSV snapshot replacement failed: {type(error).__name__}: {error}")
         return 1
-    print(
-        json.dumps(
-            {
-                "run_id": str(result.run_id),
-                "status": result.status,
-                "applied_contracts": result.applied_contracts,
-                "applied_rows": result.applied_rows,
-            },
-            ensure_ascii=False,
-        )
-    )
+    finally:
+        if engine is not None:
+            engine.dispose()
+
+    total_rows = sum(len(data.index) for _, data, _ in prepared)
+    print(f"Replaced {len(prepared)} analytical tables from {total_rows} CSV rows.")
     return 0
 
 
