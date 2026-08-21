@@ -27,7 +27,11 @@ DEFAULT_EXPORT_DIR = Path(
     r"D:\NAS\заказы\Евгений\Access\Табличные выгрузки1С"
 )
 LOG_PATH = PROJECT_ROOT / "data_upload_errors.log"
-MAX_EXPORT_AGE = timedelta(hours=8)
+# The 17 CSV files form one daily cohort.  This age is a fail-closed deadline
+# for starting the receiver after that cohort, not a synchronization delay and
+# not the cadence of the independently produced operational workbooks.
+DAILY_CSV_MAX_AGE = timedelta(hours=8)
+DAILY_CSV_MAX_SPREAD = timedelta(hours=2)
 SIMPLE_SNAPSHOT_CONTRACTS = tuple(
     (
         contract.name,
@@ -123,16 +127,24 @@ def prepare_exports(
         raise FileNotFoundError("Missing required 1C CSV files: " + ", ".join(missing))
 
     reference = reference or datetime.now()
+    source_mtimes = {
+        file_name: datetime.fromtimestamp((source_dir / file_name).stat().st_mtime)
+        for _, file_name, _ in SIMPLE_SNAPSHOT_CONTRACTS
+    }
     stale = [
         file_name
-        for _, file_name, _ in SIMPLE_SNAPSHOT_CONTRACTS
-        if reference.timestamp() - (source_dir / file_name).stat().st_mtime
-        > MAX_EXPORT_AGE.total_seconds()
+        for file_name, modified_at in source_mtimes.items()
+        if reference - modified_at > DAILY_CSV_MAX_AGE
     ]
     if stale:
         raise ValueError(
-            "1C CSV files are older than the allowed 8-hour export window: "
+            "1C daily CSV files are older than the receiver deadline: "
             + ", ".join(stale)
+        )
+    cohort_spread = max(source_mtimes.values()) - min(source_mtimes.values())
+    if cohort_spread > DAILY_CSV_MAX_SPREAD:
+        raise ValueError(
+            "1C daily CSV files do not form one coherent export cohort"
         )
 
     prepared = []
