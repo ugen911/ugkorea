@@ -35,10 +35,10 @@ DEFAULT_NETWORK_EXPORT_DIR = Path(
     r"\\26.218.196.12\заказы\Евгений\Access\Табличные выгрузки1С"
 )
 LOG_PATH = PROJECT_ROOT / "data_upload_errors.log"
-# The 17 CSV files form one daily cohort.  This age is a fail-closed deadline
-# for starting the receiver after that cohort, not a synchronization delay and
-# not the cadence of the independently produced operational workbooks.
-DAILY_CSV_MAX_AGE = timedelta(hours=8)
+# The 17 CSV files form one daily cohort.  This is a stale-source deadline, not
+# a synchronization delay.  Thirty hours covers the confirmed daily export plus
+# a delayed retry; an explicit environment override supports controlled recovery.
+DEFAULT_DAILY_CSV_MAX_AGE_HOURS = 30
 DAILY_CSV_MAX_SPREAD = timedelta(hours=2)
 SIMPLE_SNAPSHOT_CONTRACTS = tuple(
     (
@@ -74,6 +74,9 @@ TEXT_PERIOD_CONTRACTS = {
     "month_end_prices",
     "inventory_movements",
 }
+# A transaction-scoped PostgreSQL advisory lock prevents two scheduler/manual
+# receiver runs from deleting the same old window and then both appending it.
+RECEIVER_ADVISORY_LOCK_KEY = 1_837_436_591_001
 SUPPORTED_CONTRACTS = {contract.name for contract in OBSERVED_CONTRACTS}
 if (
     SNAPSHOT_CONTRACTS
@@ -120,6 +123,24 @@ def table_name(file_name: str) -> str:
     return to_snake_case(stem)
 
 
+def daily_csv_max_age() -> timedelta:
+    raw_hours = os.getenv(
+        "UGKOREA_ONE_C_DAILY_CSV_MAX_AGE_HOURS",
+        str(DEFAULT_DAILY_CSV_MAX_AGE_HOURS),
+    )
+    try:
+        hours = int(raw_hours)
+    except ValueError as error:
+        raise RuntimeError(
+            "UGKOREA_ONE_C_DAILY_CSV_MAX_AGE_HOURS must be an integer"
+        ) from error
+    if hours < 24 or hours > 168:
+        raise RuntimeError(
+            "UGKOREA_ONE_C_DAILY_CSV_MAX_AGE_HOURS must be between 24 and 168"
+        )
+    return timedelta(hours=hours)
+
+
 def prepare_exports(
     source_dir: Path,
     *,
@@ -143,15 +164,19 @@ def prepare_exports(
         file_name: datetime.fromtimestamp((source_dir / file_name).stat().st_mtime)
         for _, file_name, _ in SIMPLE_SNAPSHOT_CONTRACTS
     }
+    max_age = daily_csv_max_age()
     stale = [
-        file_name
+        (file_name, reference - modified_at)
         for file_name, modified_at in source_mtimes.items()
-        if reference - modified_at > DAILY_CSV_MAX_AGE
+        if reference - modified_at > max_age
     ]
     if stale:
+        oldest_age_hours = max(age.total_seconds() for _, age in stale) / 3600
         raise ValueError(
-            "1C daily CSV files are older than the receiver deadline: "
-            + ", ".join(stale)
+            "1C daily CSV files are older than the configured "
+            f"{max_age.total_seconds() / 3600:g}-hour receiver deadline "
+            f"(oldest age {oldest_age_hours:.1f} hours): "
+            + ", ".join(file_name for file_name, _ in stale)
         )
     cohort_spread = max(source_mtimes.values()) - min(source_mtimes.values())
     if cohort_spread > DAILY_CSV_MAX_SPREAD:
@@ -251,16 +276,56 @@ def quoted_identifier(value: str) -> str:
 
 def text_period_expression(column: str) -> str:
     quoted = quoted_identifier(column)
+    trimmed = f"BTRIM(REPLACE({quoted}, CHR(160), ' '))"
     return (
         "CASE "
-        f"WHEN {quoted} ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}} "
-        f"\\d{{2}}:\\d{{2}}:\\d{{2}}$' THEN to_timestamp({quoted}, "
+        f"WHEN {trimmed} ~ '^[0-9]{{2}}[.][0-9]{{2}}[.][0-9]{{4}} "
+        f"[0-9]{{2}}:[0-9]{{2}}:[0-9]{{2}}$' THEN to_timestamp({trimmed}, "
         "'DD.MM.YYYY HH24:MI:SS') "
-        f"WHEN {quoted} ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}$' "
-        f"THEN to_timestamp({quoted}, 'DD.MM.YYYY') "
-        f"WHEN {quoted} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' "
-        f"THEN {quoted}::timestamp "
+        f"WHEN {trimmed} ~ '^[0-9]{{2}}[.][0-9]{{2}}[.][0-9]{{4}}$' "
+        f"THEN to_timestamp({trimmed}, 'DD.MM.YYYY') "
+        f"WHEN {trimmed} ~ '^[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}' "
+        f"THEN {trimmed}::timestamp "
         "ELSE NULL END"
+    )
+
+
+def table_row_count(
+    connection: object,
+    destination: str,
+    *,
+    where_sql: str | None = None,
+    parameters: dict[str, object] | None = None,
+) -> int:
+    query = f"SELECT COUNT(*) FROM {quoted_identifier(destination)}"
+    if where_sql is not None:
+        query += f" WHERE {where_sql}"
+    return int(connection.execute(text(query), parameters or {}).scalar_one())
+
+
+def require_table_row_count(
+    connection: object,
+    destination: str,
+    expected: int,
+    *,
+    phase: str,
+    where_sql: str | None = None,
+    parameters: dict[str, object] | None = None,
+) -> None:
+    actual = table_row_count(
+        connection,
+        destination,
+        where_sql=where_sql,
+        parameters=parameters,
+    )
+    if actual != expected:
+        raise RuntimeError(
+            f"Row-count verification failed for table '{destination}' during "
+            f"{phase}: expected {expected}, got {actual}"
+        )
+    print(
+        f"[Проверка] Таблица '{destination}', {phase}: {actual} строк.",
+        flush=True,
     )
 
 
@@ -277,24 +342,28 @@ def update_exports(
         for contract_name, file_name, _ in SIMPLE_SNAPSHOT_CONTRACTS
     }
     total_tables = len(prepared)
+    window_parameters = {"cutoff": cutoff, "window_end": window_end}
     print("Подготовка транзакции обновления таблиц...", flush=True)
     with engine.begin() as connection:
-        for contract_name in sorted(SNAPSHOT_CONTRACTS):
-            connection.execute(
-                text(f"DELETE FROM {quoted_identifier(destinations[contract_name])}")
-            )
-
-        executor_table = quoted_identifier(destinations["service_order_executors"])
-        works_table = quoted_identifier(destinations["service_order_works"])
-        connection.execute(
-            text(
-                f"DELETE FROM {executor_table} WHERE ssylka IN "
-                f"(SELECT DISTINCT ssylka FROM {works_table} "
-                f"WHERE data >= :cutoff AND data < :window_end)"
-            ),
-            {"cutoff": cutoff, "window_end": window_end},
+        print(
+            "[Блокировка] Проверка отсутствия другого обновления 1С...",
+            flush=True,
         )
+        lock_acquired = bool(
+            connection.execute(
+                text("SELECT pg_try_advisory_xact_lock(:lock_key)"),
+                {"lock_key": RECEIVER_ADVISORY_LOCK_KEY},
+            ).scalar_one()
+        )
+        if not lock_acquired:
+            raise RuntimeError(
+                "Another 1C analytical-table update is already running; "
+                "this run was stopped before changing any table"
+            )
+        print("[Блокировка] Получена.", flush=True)
 
+        period_scopes = {}
+        period_preserved_rows = {}
         for contract_name, destination, _, _ in prepared:
             if contract_name in SNAPSHOT_CONTRACTS or contract_name == "service_order_executors":
                 continue
@@ -304,12 +373,110 @@ def update_exports(
                 if contract_name in TEXT_PERIOD_CONTRACTS
                 else quoted_identifier(column)
             )
-            connection.execute(
+            invalid_count = table_row_count(
+                connection,
+                destination,
+                where_sql=f"{expression} IS NULL",
+            )
+            if invalid_count:
+                raise RuntimeError(
+                    f"Table '{destination}' contains {invalid_count} rows "
+                    f"without a parseable {column}; update was stopped"
+                )
+            scope = f"{expression} >= :cutoff AND {expression} < :window_end"
+            period_scopes[contract_name] = scope
+            total_before = table_row_count(connection, destination)
+            scope_before = table_row_count(
+                connection,
+                destination,
+                where_sql=scope,
+                parameters=window_parameters,
+            )
+            period_preserved_rows[contract_name] = total_before - scope_before
+            print(
+                f"[Классификация] Таблица '{destination}': "
+                f"{scope_before} строк окна, "
+                f"{period_preserved_rows[contract_name]} строк истории.",
+                flush=True,
+            )
+
+        for contract_name in sorted(SNAPSHOT_CONTRACTS):
+            result = connection.execute(
+                text(f"DELETE FROM {quoted_identifier(destinations[contract_name])}")
+            )
+            print(
+                f"[Очистка] Таблица '{destinations[contract_name]}': "
+                f"удалено {result.rowcount} строк.",
+                flush=True,
+            )
+            require_table_row_count(
+                connection,
+                destinations[contract_name],
+                0,
+                phase="после очистки снимка",
+            )
+
+        executor_table = quoted_identifier(destinations["service_order_executors"])
+        works_table = quoted_identifier(destinations["service_order_works"])
+        executor_scope = (
+            "ssylka IN "
+            f"(SELECT DISTINCT ssylka FROM {works_table} "
+            "WHERE data >= :cutoff AND data < :window_end)"
+        )
+        executor_total_before = table_row_count(
+            connection,
+            destinations["service_order_executors"],
+        )
+        executor_scope_before = table_row_count(
+            connection,
+            destinations["service_order_executors"],
+            where_sql=executor_scope,
+            parameters=window_parameters,
+        )
+        executor_preserved_rows = executor_total_before - executor_scope_before
+        result = connection.execute(
+            text(
+                f"DELETE FROM {executor_table} WHERE {executor_scope}"
+            ),
+            window_parameters,
+        )
+        print(
+            f"[Очистка] Таблица '{destinations['service_order_executors']}': "
+            f"удалено {result.rowcount} строк текущего окна.",
+            flush=True,
+        )
+        require_table_row_count(
+            connection,
+            destinations["service_order_executors"],
+            0,
+            phase="после очистки окна",
+            where_sql=executor_scope,
+            parameters=window_parameters,
+        )
+
+        for contract_name, destination, _, _ in prepared:
+            if contract_name in SNAPSHOT_CONTRACTS or contract_name == "service_order_executors":
+                continue
+            scope = period_scopes[contract_name]
+            result = connection.execute(
                 text(
                     f"DELETE FROM {quoted_identifier(destination)} "
-                    f"WHERE {expression} >= :cutoff AND {expression} < :window_end"
+                    f"WHERE {scope}"
                 ),
-                {"cutoff": cutoff, "window_end": window_end},
+                window_parameters,
+            )
+            print(
+                f"[Очистка] Таблица '{destination}': удалено "
+                f"{result.rowcount} строк текущего окна.",
+                flush=True,
+            )
+            require_table_row_count(
+                connection,
+                destination,
+                0,
+                phase="после очистки окна",
+                where_sql=scope,
+                parameters=window_parameters,
             )
 
         for position, (contract_name, destination, data, use_index) in enumerate(
@@ -332,6 +499,43 @@ def update_exports(
                 f"[Записано {position}/{total_tables}] Таблица '{destination}' "
                 "записана в текущую транзакцию.",
                 flush=True,
+            )
+
+        expected_rows = {
+            contract_name: len(data.index)
+            for contract_name, _, data, _ in prepared
+        }
+        for contract_name, destination, _, _ in prepared:
+            if contract_name in SNAPSHOT_CONTRACTS:
+                where_sql = None
+                parameters = None
+                expected_total = expected_rows[contract_name]
+            elif contract_name == "service_order_executors":
+                where_sql = executor_scope
+                parameters = window_parameters
+                expected_total = (
+                    executor_preserved_rows + expected_rows[contract_name]
+                )
+            else:
+                where_sql = period_scopes[contract_name]
+                parameters = window_parameters
+                expected_total = (
+                    period_preserved_rows[contract_name]
+                    + expected_rows[contract_name]
+                )
+            require_table_row_count(
+                connection,
+                destination,
+                expected_rows[contract_name],
+                phase="после записи",
+                where_sql=where_sql,
+                parameters=parameters,
+            )
+            require_table_row_count(
+                connection,
+                destination,
+                expected_total,
+                phase="итоговая таблица с сохранённой историей",
             )
 
     print(
