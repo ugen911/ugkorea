@@ -35,11 +35,6 @@ DEFAULT_NETWORK_EXPORT_DIR = Path(
     r"\\26.218.196.12\заказы\Евгений\Access\Табличные выгрузки1С"
 )
 LOG_PATH = PROJECT_ROOT / "data_upload_errors.log"
-# The 17 CSV files form one daily cohort.  This is a stale-source deadline, not
-# a synchronization delay.  Thirty hours covers the confirmed daily export plus
-# a delayed retry; an explicit environment override supports controlled recovery.
-DEFAULT_DAILY_CSV_MAX_AGE_HOURS = 30
-DAILY_CSV_MAX_SPREAD = timedelta(hours=2)
 SIMPLE_SNAPSHOT_CONTRACTS = tuple(
     (
         contract.name,
@@ -123,30 +118,11 @@ def table_name(file_name: str) -> str:
     return to_snake_case(stem)
 
 
-def daily_csv_max_age() -> timedelta:
-    raw_hours = os.getenv(
-        "UGKOREA_ONE_C_DAILY_CSV_MAX_AGE_HOURS",
-        str(DEFAULT_DAILY_CSV_MAX_AGE_HOURS),
-    )
-    try:
-        hours = int(raw_hours)
-    except ValueError as error:
-        raise RuntimeError(
-            "UGKOREA_ONE_C_DAILY_CSV_MAX_AGE_HOURS must be an integer"
-        ) from error
-    if hours < 24 or hours > 168:
-        raise RuntimeError(
-            "UGKOREA_ONE_C_DAILY_CSV_MAX_AGE_HOURS must be between 24 and 168"
-        )
-    return timedelta(hours=hours)
-
-
 def prepare_exports(
     source_dir: Path,
     *,
     cutoff: datetime,
     window_end: datetime,
-    reference: datetime | None = None,
 ) -> list[tuple[str, str, pd.DataFrame, bool]]:
     if not source_dir.is_dir():
         raise FileNotFoundError(f"1C export directory does not exist: {source_dir}")
@@ -158,31 +134,6 @@ def prepare_exports(
     ]
     if missing:
         raise FileNotFoundError("Missing required 1C CSV files: " + ", ".join(missing))
-
-    reference = reference or datetime.now()
-    source_mtimes = {
-        file_name: datetime.fromtimestamp((source_dir / file_name).stat().st_mtime)
-        for _, file_name, _ in SIMPLE_SNAPSHOT_CONTRACTS
-    }
-    max_age = daily_csv_max_age()
-    stale = [
-        (file_name, reference - modified_at)
-        for file_name, modified_at in source_mtimes.items()
-        if reference - modified_at > max_age
-    ]
-    if stale:
-        oldest_age_hours = max(age.total_seconds() for _, age in stale) / 3600
-        raise ValueError(
-            "1C daily CSV files are older than the configured "
-            f"{max_age.total_seconds() / 3600:g}-hour receiver deadline "
-            f"(oldest age {oldest_age_hours:.1f} hours): "
-            + ", ".join(file_name for file_name, _ in stale)
-        )
-    cohort_spread = max(source_mtimes.values()) - min(source_mtimes.values())
-    if cohort_spread > DAILY_CSV_MAX_SPREAD:
-        raise ValueError(
-            "1C daily CSV files do not form one coherent export cohort"
-        )
 
     prepared = []
     total_files = len(SIMPLE_SNAPSHOT_CONTRACTS)
@@ -558,7 +509,6 @@ def main() -> int:
             source_dir,
             cutoff=cutoff,
             window_end=window_end,
-            reference=reference,
         )
         update_exports(prepared, engine, cutoff=cutoff, window_end=window_end)
     except Exception as error:
